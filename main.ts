@@ -1,15 +1,20 @@
 import fastify from 'fastify'
-import crypto from 'crypto'
+import crypto, { verify, X509Certificate } from 'crypto'
 import fsSync from 'fs'
 import fs from 'fs/promises'
-import { HA_API_KEY, HA_ENTITY, PAIRING_KEY } from './config'
+import { HA_API_KEY, HA_ENTITY, PAIRING_SECRET } from './config'
 import fetch from 'node-fetch'
+import { cryptoCompare, verifyCertChain, verifyRootCert } from './crypto'
+import { GOOGLE_ROOT_CERTS } from './certificates'
 
 const server = fastify({ logger: true })
 
-function cryptoCompare(a: string, b: string) {
-  return crypto.timingSafeEqual(Buffer.from(a), Buffer.from(b))
+// Ongoing pairing challenges
+interface Challenge {
+  id: string
+  timestamp: number
 }
+const challenges: Record<string, Challenge> = {}
 
 // Simple storage of paired public keys in a JSON file
 function loadKeys() {
@@ -23,22 +28,53 @@ function loadKeys() {
 
 const keys = loadKeys()
 async function addKey(key: string) {
+  if (keys.includes(key)) {
+    return
+  }
+
   keys.push(key)
   await fs.writeFile('data/keys.json', JSON.stringify(keys))
 }
 
-interface PairRequest {
-  publicKey: string
-  pairingKey: string
+interface PairStartRequest {
+  pairingSecret: string
 }
-server.post('/api/pair', async (request, reply) => {
-  const { publicKey, pairingKey } = request.body as PairRequest
-  if (!cryptoCompare(pairingKey, PAIRING_KEY)) {
-    reply.code(401).send('Invalid pairing key')
+server.post('/api/pair/start', async (request, reply) => {
+  const { pairingSecret } = request.body as PairStartRequest
+  if (!cryptoCompare(pairingSecret, PAIRING_SECRET)) {
+    reply.code(401).send('Invalid pairing secret')
     return
   }
 
+  // Generate a new challenge
+  const challengeId = crypto.randomBytes(32).toString('hex')
+  const challenge = {
+    id: challengeId,
+    timestamp: Date.now(),
+  }
+  challenges[challengeId] = challenge
+
+  return challenge
+})
+
+interface PairFinishRequest {
+  challengeId: string
+  publicKey: string
+  attestationChain: string[]
+}
+server.post('/api/pair/finish', async (request, reply) => {
+  const { publicKey, challengeId, attestationChain } = request.body as PairFinishRequest
+  const challenge = challenges[challengeId]
+  if (!challenge) {
+    reply.code(400).send('Invalid challenge')
+    return
+  }
+
+  // Verify atttestation certificate chain
+  verifyCertChain(attestationChain, GOOGLE_ROOT_CERTS)
+
   await addKey(publicKey)
+  delete challenges[challengeId]
 })
 
 interface UnlockPayload {
