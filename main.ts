@@ -1,11 +1,11 @@
 import fastify from 'fastify'
-import crypto, { verify, X509Certificate } from 'crypto'
+import crypto from 'crypto'
 import fsSync from 'fs'
 import fs from 'fs/promises'
-import { HA_API_KEY, HA_ENTITY, PAIRING_SECRET, TIME_GRACE_PERIOD } from './config'
-import fetch from 'node-fetch'
-import { cryptoCompare, verifyCertChain, verifyRootCert } from './crypto'
+import { HA_API_KEY, HA_ENTITY, PAIRING_SECRET, RELOCK_DELAY, TIME_GRACE_PERIOD } from './config'
+import { cryptoCompare, verifyCertChain } from './crypto'
 import { GOOGLE_ROOT_CERTS } from './certificates'
+import { postLock } from './homeassistant'
 
 const server = fastify({ logger: true })
 
@@ -129,14 +129,13 @@ ${publicKey}
 
   // Unlock
   console.log('Posting HA unlock')
-  await fetch('http://171.66.3.236:8123/api/services/lock/unlock', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${HA_API_KEY}`,
-    },
-    body: JSON.stringify({ entity_id: HA_ENTITY }),
-  })
+  await postLock(true)
+
+  // Re-lock after delay
+  setTimeout(async () => {
+    console.log('Posting HA lock')
+    await postLock(false)
+  }, RELOCK_DELAY)
 })
 
 async function start() {
