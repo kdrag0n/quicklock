@@ -1,12 +1,12 @@
 package dev.kdrag0n.quicklock.server
 
-import com.squareup.moshi.JsonAdapter
 import com.squareup.moshi.Moshi
 import dagger.Reusable
 import dev.kdrag0n.quicklock.CryptoService
+import java.io.IOException
 import javax.inject.Inject
 
-private const val PAIRING_KEY = "pairing-key"
+private const val PAIRING_SECRET = "sjcCugNwAqr3t8ZnmR37sHi8ZRr5GkAF"
 
 @Reusable
 class ApiClient @Inject constructor(
@@ -17,11 +17,23 @@ class ApiClient @Inject constructor(
     private val adapter = moshi.adapter(UnlockRequest::class.java)
 
     suspend fun pair() {
-        val request = PairRequest(
-            publicKey = crypto.publicKeyEncoded,
-            pairingKey = PAIRING_KEY,
+        // Start: get a challenge
+        val startRequest = PairStartRequest(
+            pairingSecret = PAIRING_SECRET,
         )
-        service.pair(request)
+        val challenge = service.startPair(startRequest).let {
+            val body = if (it.isSuccessful) it.body() else null
+            body ?: throw RequestException(it.errorBody()?.string() ?: "Unknown error")
+        }
+
+        // Generate keypair with challenge and finish
+        crypto.generateKey(challenge.id)
+        val finishRequest = PairFinishRequest(
+            challengeId = challenge.id,
+            publicKey = crypto.publicKeyEncoded,
+            attestationChain = crypto.getAttestationChain(),
+        )
+        service.finishPair(finishRequest)
     }
 
     suspend fun unlock() {
@@ -39,3 +51,5 @@ class ApiClient @Inject constructor(
         service.unlock(request)
     }
 }
+
+class RequestException(message: String) : IOException(message)
