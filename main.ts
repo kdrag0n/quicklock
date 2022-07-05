@@ -2,7 +2,7 @@ import fastify from 'fastify'
 import crypto, { verify, X509Certificate } from 'crypto'
 import fsSync from 'fs'
 import fs from 'fs/promises'
-import { HA_API_KEY, HA_ENTITY, PAIRING_SECRET } from './config'
+import { HA_API_KEY, HA_ENTITY, PAIRING_SECRET, TIME_GRACE_PERIOD } from './config'
 import fetch from 'node-fetch'
 import { cryptoCompare, verifyCertChain, verifyRootCert } from './crypto'
 import { GOOGLE_ROOT_CERTS } from './certificates'
@@ -70,11 +70,25 @@ server.post('/api/pair/finish', async (request, reply) => {
     return
   }
 
-  // Verify atttestation certificate chain
-  verifyCertChain(attestationChain, GOOGLE_ROOT_CERTS)
+  try {
+    // Verify timestamp
+    const now = Date.now()
+    if (now - challenge.timestamp > TIME_GRACE_PERIOD) {
+      reply.code(400).send('Challenge expired')
+      return
+    }
 
-  await addKey(publicKey)
-  delete challenges[challengeId]
+    // Verify atttestation certificate chain
+    verifyCertChain(attestationChain, GOOGLE_ROOT_CERTS)
+
+    await addKey(publicKey)
+  } catch (e) {
+    reply.code(401).send('Invalid attestation chain')
+    return
+  } finally {
+    // Drop challenge
+    delete challenges[challengeId]
+  }
 })
 
 interface UnlockPayload {
@@ -103,14 +117,12 @@ server.post('/api/unlock', async (request, reply) => {
 ${publicKey}
 -----END PUBLIC KEY-----`, signature, 'base64')
   if (!valid) {
-    console.log('Invalid signature')
     reply.code(401).send('Invalid signature')
     return
   }
 
   // Verify timestamp: 2 min
-  if (Math.abs(Date.now() - timestamp) > 2 * 60 * 1000) {
-    console.log('Invalid timestamp')
+  if (Math.abs(Date.now() - timestamp) > TIME_GRACE_PERIOD) {
     reply.code(401).send('Invalid timestamp')
     return
   }
