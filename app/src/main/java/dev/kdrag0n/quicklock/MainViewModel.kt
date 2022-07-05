@@ -7,6 +7,7 @@ import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dev.kdrag0n.quicklock.server.ApiClient
+import dev.kdrag0n.quicklock.util.EventFlow
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -14,6 +15,8 @@ import javax.inject.Inject
 class MainViewModel @Inject constructor(
     private val client: ApiClient,
 ) : ViewModel() {
+    val unlockFlow = EventFlow()
+
     fun pair() {
         viewModelScope.launch {
             client.pair()
@@ -23,6 +26,7 @@ class MainViewModel @Inject constructor(
     fun unlock() {
         viewModelScope.launch {
             client.unlock()
+            unlockFlow.emit()
         }
     }
 }
