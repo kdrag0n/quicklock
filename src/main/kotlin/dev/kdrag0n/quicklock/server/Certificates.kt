@@ -1,7 +1,12 @@
-import { canonicalizeCert } from './crypto'
+package dev.kdrag0n.quicklock.server
 
-export const GOOGLE_ROOT_CERTS = [
-  `-----BEGIN CERTIFICATE-----
+import java.io.ByteArrayInputStream
+import java.security.cert.CertificateFactory
+import java.security.cert.X509Certificate
+
+object Certificates {
+    val GOOGLE_ROOTS = listOf(
+        """-----BEGIN CERTIFICATE-----
 MIIFYDCCA0igAwIBAgIJAOj6GWMU0voYMA0GCSqGSIb3DQEBCwUAMBsxGTAXBgNV
 BAUTEGY5MjAwOWU4NTNiNmIwNDUwHhcNMTYwNTI2MTYyODUyWhcNMjYwNTI0MTYy
 ODUyWjAbMRkwFwYDVQQFExBmOTIwMDllODUzYjZiMDQ1MIICIjANBgkqhkiG9w0B
@@ -31,8 +36,8 @@ ZohZbvabO/X+MVT3rriAoKc8oE2Uws6DF+60PV7/WIPjNvXySdqspImSN78mflxD
 qwLqRBYkA3I75qppLGG9rp7UCdRjxMl8ZDBld+7yvHVgt1cVzJx9xnyGCC23Uaic
 MDSXYrB4I4WHXPGjxhZuCuPBLTdOLU8YRvMYdEvYebWHMpvwGCF6bAx3JBpIeOQ1
 wDB5y0USicV3YgYGmi+NZfhA4URSh77Yd6uuJOJENRaNVTzk
------END CERTIFICATE-----`,
-  `-----BEGIN CERTIFICATE-----
+-----END CERTIFICATE-----""",
+        """-----BEGIN CERTIFICATE-----
 MIIFHDCCAwSgAwIBAgIJANUP8luj8tazMA0GCSqGSIb3DQEBCwUAMBsxGTAXBgNV
 BAUTEGY5MjAwOWU4NTNiNmIwNDUwHhcNMTkxMTIyMjAzNzU4WhcNMzQxMTE4MjAz
 NzU4WjAbMRkwFwYDVQQFExBmOTIwMDllODUzYjZiMDQ1MIICIjANBgkqhkiG9w0B
@@ -61,8 +66,8 @@ oeLm2UHOq6wn3esB4r2EIQKb6jTVGu5sYCcdWpXr0AUVqcABPdgL+H7qJguBw09o
 jm6xNIrw2OocrDKsudk/okr/AwqEyPKw9WnMlQgLIKw1rODG2NvU9oR3GVGdMkUB
 ZutL8VuFkERQGt6vQ2OCw0sV47VMkuYbacK/xyZFiRcrPJPb41zgbQj9XAEyLKCH
 ex0SdDrx+tWUDqG8At2JHA==
------END CERTIFICATE-----`,
-  `-----BEGIN CERTIFICATE-----
+-----END CERTIFICATE-----""",
+        """-----BEGIN CERTIFICATE-----
 MIIFHDCCAwSgAwIBAgIJAMNrfES5rhgxMA0GCSqGSIb3DQEBCwUAMBsxGTAXBgNV
 BAUTEGY5MjAwOWU4NTNiNmIwNDUwHhcNMjExMTE3MjMxMDQyWhcNMzYxMTEzMjMx
 MDQyWjAbMRkwFwYDVQQFExBmOTIwMDllODUzYjZiMDQ1MIICIjANBgkqhkiG9w0B
@@ -91,5 +96,9 @@ HQLE4+EqKFgOZv2EoP686DQqbVS1u+9k0p2xbMA105TBIk7npraa8VM0fnrRKi7w
 lZKwdH+aNAyhbXRW9xsnODJ+g8eF452zvbiKKngEKirK5LGieoXBX7tZ9D1GNBH2
 Ob3bKOwwIWdEFle/YF/h6zWgdeoaNGDqVBrLr2+0DtWoiB1aDEjLWl9FmyIUyUm7
 mD/vFDkzF+wm7cyWpQpCVQ==
------END CERTIFICATE-----`,
-].map(encoded => canonicalizeCert(encoded))
+-----END CERTIFICATE-----""",
+    ).map {
+        val factory = CertificateFactory.getInstance("X.509")
+        factory.generateCertificate(ByteArrayInputStream(it.toByteArray()))
+    }
+}
