@@ -27,7 +27,7 @@ object Storage {
     private fun writeDevices() {
         File("data").mkdirs()
         File("data/devices.json")
-            .writeText(Json.encodeToString(devices.keys.toList()))
+            .writeText(Json.encodeToString(devices.values.toList()))
     }
 
     fun addDevice(device: PairedDevice) {

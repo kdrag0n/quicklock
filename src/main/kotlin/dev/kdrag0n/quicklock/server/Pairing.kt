@@ -59,7 +59,10 @@ fun Application.pairingModule() = routing {
 
             // Verify attestation certificate chain
             val certs = attestationChain.map { Crypto.parseCert(it) }
-            Crypto.verifyCertChain(certs)
+            val attestationCert = Crypto.verifyCertChain(certs)
+
+            // Verify attestation ext data
+            Attestation.verifyAttestation(attestationCert, challenge.id)
 
             Storage.addDevice(PairedDevice(
                 publicKey = publicKey,

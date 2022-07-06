@@ -1,5 +1,6 @@
 package dev.kdrag0n.quicklock.server
 
+import com.google.android.attestation.CertificateRevocationStatus
 import java.io.ByteArrayInputStream
 import java.security.KeyFactory
 import java.security.cert.CertificateFactory
@@ -34,12 +35,16 @@ object Crypto {
         // Initial parent is root (last)
         var parent = root
         // Verify each cert starting from root, including parent
-        certs.reversed().forEach {
-            it.checkValidity()
-            it.verify(parent.publicKey)
-            require(it.issuerDN.name == parent.subjectDN.name)
+        certs.reversed().forEach { cert ->
+            cert.checkValidity()
+            cert.verify(parent.publicKey)
+            // Issued by parent
+            require(cert.issuerX500Principal.name == parent.subjectX500Principal.name)
 
-            parent = it
+            // Check revocation
+            require(CertificateRevocationStatus.fetchStatus(cert.serialNumber) == null)
+
+            parent = cert
         }
 
         // Return attestation cert
@@ -47,5 +52,5 @@ object Crypto {
     }
 }
 
-fun String.decodeBase64() =
+fun String.decodeBase64(): ByteArray =
     Base64.getDecoder().decode(this)
