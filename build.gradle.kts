@@ -36,8 +36,10 @@ dependencies {
 
     implementation("ch.qos.logback:logback-classic:$logback_version")
 
-    implementation("org.bouncycastle:bcpkix-jdk15on:1.61")
-    implementation("com.google.code.gson:gson:2.8.5")
+    implementation("org.bouncycastle:bcpkix-jdk15on:1.70")
+    implementation("com.google.code.gson:gson:2.9.0")
+    implementation("com.google.zxing:core:3.5.0")
+    implementation("com.google.zxing:javase:3.5.0")
 
     testImplementation("io.ktor:ktor-server-tests-jvm:$ktor_version")
     testImplementation("org.jetbrains.kotlin:kotlin-test-junit:$kotlin_version")

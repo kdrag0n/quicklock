@@ -32,12 +32,9 @@ fun Application.actionsModule() = routing {
     post("/api/unlock") {
         val (payload, signature) = call.receive<WrappedUnlockRequest>()
         val (publicKey, timestamp) = Json.decodeFromString<UnlockPayload>(payload)
-        Storage.requirePaired(publicKey)
+        Storage.getDeviceByKey(publicKey)
 
-        val sig = Signature.getInstance("SHA256withECDSA")
-        sig.initVerify(Crypto.parsePublicKey(publicKey))
-        sig.update(payload.toByteArray())
-        require(sig.verify(signature.decodeBase64()))
+        Crypto.verifySignature(payload, publicKey, signature)
 
         // Verify timestamp
         require(abs(System.currentTimeMillis() - timestamp) <= Config.TIME_GRACE_PERIOD)

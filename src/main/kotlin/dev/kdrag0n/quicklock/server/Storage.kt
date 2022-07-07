@@ -5,12 +5,18 @@ import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import java.io.File
-import java.io.FileInputStream
 import java.io.FileNotFoundException
 
 @Serializable
 data class PairedDevice(
+    // For normal actions (unlock)
     val publicKey: String,
+    // For adding a new device. This one requires protected confirmation, verified by attestation
+    val delegationKey: String,
+    // When this device's access expires (for temporary access)
+    val expiresAt: Long,
+    // Device that authorized this. Null for initial setup
+    val delegatedBy: String?,
 )
 
 object Storage {
@@ -39,6 +45,13 @@ object Storage {
         writeDevices()
     }
 
-    fun requirePaired(publicKey: String) =
-        require(publicKey in devices)
+    fun getDeviceByKey(publicKey: String): PairedDevice {
+        val device = devices[publicKey]
+        requireNotNull(device)
+        require(device.expiresAt >= System.currentTimeMillis())
+
+        return device
+    }
+
+    fun hasPairedDevices() = devices.isNotEmpty()
 }

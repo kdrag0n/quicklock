@@ -3,6 +3,7 @@ package dev.kdrag0n.quicklock.server
 import com.google.android.attestation.CertificateRevocationStatus
 import java.io.ByteArrayInputStream
 import java.security.KeyFactory
+import java.security.Signature
 import java.security.cert.CertificateFactory
 import java.security.cert.X509Certificate
 import java.security.interfaces.ECPublicKey
@@ -50,7 +51,20 @@ object Crypto {
         // Return attestation cert
         return certs.first()
     }
+
+    fun verifySignature(payload: String, publicKey: String, signature: String) {
+        val sig = Signature.getInstance("SHA256withECDSA")
+        sig.initVerify(Crypto.parsePublicKey(publicKey))
+        sig.update(payload.toByteArray())
+        require(sig.verify(signature.decodeBase64()))
+    }
 }
 
 fun String.decodeBase64(): ByteArray =
     Base64.getDecoder().decode(this)
+
+fun ByteArray.toBase64(): String =
+    Base64.getEncoder().encodeToString(this)
+
+fun ByteArray.toBase64Url(): String =
+    Base64.getUrlEncoder().encodeToString(this)

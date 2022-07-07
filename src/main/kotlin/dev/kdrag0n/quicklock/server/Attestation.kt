@@ -8,7 +8,7 @@ import kotlin.jvm.optionals.getOrNull
 
 object Attestation {
     @OptIn(ExperimentalStdlibApi::class)
-    fun verifyAttestation(cert: X509Certificate, challengeId: String) {
+    private fun verifyAttestation(cert: X509Certificate, challengeId: String, isDelegation: Boolean = true) {
         val record = ParsedAttestationRecord.createParsedAttestationRecord(cert)
 
         require(record.attestationChallenge.contentEquals(challengeId.toByteArray()))
@@ -26,5 +26,15 @@ object Attestation {
         record.softwareEnforced.usageExpireDateTime.getOrNull()?.let {
             require(it.isAfter(Instant.now().minusMillis(Config.TIME_GRACE_PERIOD)))
         }
+
+        if (isDelegation) {
+//            require(record.teeEnforced.trustedConfirmationRequired)
+        }
+    }
+
+    fun verifyChain(chain: List<String>, challengeId: String, isDelegation: Boolean = false) {
+        val certs = chain.map { Crypto.parseCert(it) }
+        val attestationCert = Crypto.verifyCertChain(certs)
+        Attestation.verifyAttestation(attestationCert, challengeId, isDelegation)
     }
 }
