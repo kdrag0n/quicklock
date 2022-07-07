@@ -40,8 +40,11 @@ class CryptoService @Inject constructor() {
             setKeyValidityStart(Date())
             setAttestationChallenge(challengeId.encodeToByteArray())
             setDevicePropertiesAttestationIncluded(true)
+
             if (isDelegation) {
-//                setUserConfirmationRequired(true)
+                setUserAuthenticationRequired(true)
+                setUserAuthenticationParameters(0, KeyProperties.AUTH_BIOMETRIC_STRONG or KeyProperties.AUTH_DEVICE_CREDENTIAL)
+                setUnlockedDeviceRequired(true)
             }
 
             setDigests(KeyProperties.DIGEST_SHA256)
@@ -53,13 +56,23 @@ class CryptoService @Inject constructor() {
         return gen.generateKeyPair().public
     }
 
-    fun signPayload(payload: String, alias: String = ALIAS): String {
-        val bytes = payload.encodeToByteArray()
+    fun prepareSignature(alias: String = ALIAS): Signature {
         val sig = Signature.getInstance("SHA256withECDSA")
         sig.initSign(getKeyEntry(alias).privateKey)
+        return sig
+    }
+
+    fun finishSignature(sig: Signature, payload: String): String {
+        val bytes = payload.encodeToByteArray()
         sig.update(bytes)
+
         val signature = sig.sign()
         return signature.toBase64()
+    }
+
+    fun signPayload(payload: String, alias: String = ALIAS): String {
+        val sig = prepareSignature(alias)
+        return finishSignature(sig, payload)
     }
 
     fun getAttestationChain(alias: String = ALIAS) = keystore.getCertificateChain(alias).map {

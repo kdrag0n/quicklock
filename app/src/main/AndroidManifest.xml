@@ -55,6 +55,10 @@
             android:name=".ui.QrDisplayActivity"
             android:exported="false" />
 
+        <activity
+            android:name=".ui.ConfirmDelegationActivity"
+            android:exported="false" />
+
     </application>
 
 </manifest>

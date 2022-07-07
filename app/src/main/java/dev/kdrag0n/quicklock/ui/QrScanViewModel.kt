@@ -7,6 +7,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import dev.kdrag0n.quicklock.CryptoService
 import dev.kdrag0n.quicklock.server.ApiClient
 import dev.kdrag0n.quicklock.server.DelegationSignature
+import dev.kdrag0n.quicklock.util.EventFlow
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -17,6 +18,7 @@ class QrScanViewModel @Inject constructor(
     private val client: ApiClient,
 ) : ViewModel() {
     val pairFinishedFlow = client.pairFinishedFlow
+    val confirmFlow = EventFlow()
     val isDelegated = client.currentPairState?.challenge?.isInitial != true
     private var scanned = false
 
@@ -29,11 +31,9 @@ class QrScanViewModel @Inject constructor(
         Log.d(TAG, "onQrScanned: $payload")
 
         if (isDelegated) {
-            // Delegated: got the request payload, sign it and upload
-            client.signAndUploadDelegation(payload)
-
-            // Force finish
-            pairFinishedFlow.emit()
+            // Delegated: got the challenge ID, show confirmation prompt
+            client.fetchDelegation(payload)
+            confirmFlow.emit()
         } else {
             // Initial: got the secret, try pairing
             client.finishInitialPair(payload)

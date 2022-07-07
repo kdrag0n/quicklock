@@ -5,14 +5,17 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.*
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import dagger.hilt.android.AndroidEntryPoint
 import dev.kdrag0n.quicklock.util.launchCollect
 import dev.kdrag0n.quicklock.util.launchStarted
@@ -58,10 +61,25 @@ class QrDisplayActivity : ComponentActivity() {
 private fun QrDisplayScreen(model: QrDisplayViewModel) {
     model.qrBitmap?.let { bitmap ->
         Box(contentAlignment = Alignment.Center) {
-            Image(
-                bitmap = bitmap.asImageBitmap(),
-                contentDescription = "QR code",
-            )
+            Column(
+                modifier = Modifier.padding(horizontal = 24.dp),
+                verticalArrangement = Arrangement.spacedBy(32.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Image(
+                    modifier = Modifier.fillMaxWidth(),
+                    bitmap = bitmap.asImageBitmap(),
+                    contentDescription = "QR code",
+                )
+
+                Text("Make sure these emoji are the same on your old device.")
+
+                Text(
+                    model.publicKeyEmoji,
+                    fontSize = 64.sp,
+                    textAlign = TextAlign.Center,
+                )
+            }
         }
     }
 }

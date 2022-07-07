@@ -15,8 +15,9 @@ class QrDisplayViewModel @Inject constructor(
 
     val qrBitmap = client.currentPairState?.delegatedQrPayload?.let { payload ->
         val encoder = BarcodeEncoder()
-        encoder.encodeBitmap(payload, BarcodeFormat.QR_CODE, 512, 512)
+        encoder.encodeBitmap(payload, BarcodeFormat.QR_CODE, 800, 800)
     }
+    val publicKeyEmoji = client.getPublicKeyEmoji()
 
     suspend fun tryFinishDelegatedPair() = client.tryFinishDelegatedPair()
 }

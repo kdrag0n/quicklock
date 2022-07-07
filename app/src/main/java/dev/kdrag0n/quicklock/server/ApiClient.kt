@@ -4,7 +4,10 @@ import com.squareup.moshi.Moshi
 import dev.kdrag0n.quicklock.CryptoService
 import dev.kdrag0n.quicklock.toBase64
 import dev.kdrag0n.quicklock.util.EventFlow
+import dev.kdrag0n.quicklock.util.toBase1024
+import okio.ByteString.Companion.decodeBase64
 import java.io.IOException
+import java.security.Signature
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -12,6 +15,11 @@ data class PairState(
     val challenge: Challenge,
     val finishPayload: String,
     val delegatedQrPayload: String,
+)
+
+data class DelegationState(
+    val finishPayload: PairFinishPayload,
+    val finishPayloadData: String,
 )
 
 @Singleton
@@ -25,6 +33,7 @@ class ApiClient @Inject constructor(
     private val pairFinishAdapter = moshi.adapter(PairFinishPayload::class.java)
     private val unlockAdapter = moshi.adapter(UnlockPayload::class.java)
     var currentPairState: PairState? = null
+    var currentDelegationState: DelegationState? = null
 
     val pairFinishedFlow = EventFlow()
 
@@ -69,6 +78,19 @@ class ApiClient @Inject constructor(
         return pairFinishAdapter.toJson(req)
     }
 
+    fun getPublicKeyEmoji() =
+        publicKeyToEmoji(crypto.publicKeyEncoded)
+
+    fun getDelegateeKeyEmoji() =
+        currentDelegationState?.finishPayload?.let {
+            publicKeyToEmoji(it.publicKey)
+        } ?: ""
+
+    // First 80 bits of the public key's SHA-256, as emoji
+    private fun publicKeyToEmoji(data: String) = data.decodeBase64()!!
+        .sha256().toByteArray()
+        .toBase1024()
+
     suspend fun finishInitialPair(scannedData: String) {
         val payload = initialQrAdapter.fromJson(scannedData)!!
         val state = currentPairState ?: return
@@ -100,7 +122,11 @@ class ApiClient @Inject constructor(
         pairFinishedFlow.emit()
     }
 
-    suspend fun signAndUploadDelegation(payload: String) {
+    suspend fun fetchDelegation(payload: String) {
+        if (currentDelegationState != null) {
+            return
+        }
+
         val qr = delegatedQrAdapter.fromJson(payload)!!
         val reqData = service.getDelegatedPairFinishPayload(qr.challengeId).let {
             if (it.isSuccessful) it.body() else null
@@ -108,11 +134,25 @@ class ApiClient @Inject constructor(
         val req = pairFinishAdapter.fromJson(reqData)!!
         require(req.challengeId == qr.challengeId)
 
+        currentDelegationState = DelegationState(
+            finishPayload = req,
+            finishPayloadData = reqData,
+        )
+    }
+
+    fun prepareDelegationSignature(): Signature {
+        return crypto.prepareSignature(alias = CryptoService.DELEGATION_ALIAS)
+    }
+
+    suspend fun signAndUploadDelegation(sig: Signature) {
+        val (req, reqData) = currentDelegationState ?: return
+
         val signature = DelegationSignature(
             device = crypto.publicKeyEncoded,
-            signature = crypto.signPayload(reqData, alias = CryptoService.DELEGATION_ALIAS),
+            signature = crypto.finishSignature(sig, reqData),
         )
         service.uploadDelegatedPairSignature(req.challengeId, signature)
+        currentDelegationState = null
     }
 
     suspend fun unlock() {

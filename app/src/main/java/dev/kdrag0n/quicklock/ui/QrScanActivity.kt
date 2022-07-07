@@ -1,6 +1,7 @@
 package dev.kdrag0n.quicklock.ui
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Bundle
 import android.util.Size
@@ -48,6 +49,11 @@ class QrScanActivity : ComponentActivity(R.layout.activity_qr_scan) {
 
         launchStarted {
             model.pairFinishedFlow.launchCollect(this) {
+                finish()
+            }
+
+            model.confirmFlow.launchCollect(this) {
+                startActivity(Intent(this@QrScanActivity, ConfirmDelegationActivity::class.java))
                 finish()
             }
         }
