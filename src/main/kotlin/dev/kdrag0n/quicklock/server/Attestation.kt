@@ -28,7 +28,8 @@ object Attestation {
         }
 
         if (isDelegation) {
-//            require(record.teeEnforced.trustedConfirmationRequired)
+            require(!record.teeEnforced.noAuthRequired)
+            require(record.teeEnforced.unlockedDeviceRequired)
         }
     }
 
