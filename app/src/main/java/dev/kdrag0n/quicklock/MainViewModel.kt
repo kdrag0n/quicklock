@@ -1,11 +1,8 @@
 package dev.kdrag0n.quicklock
 
-import android.annotation.SuppressLint
-import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
-import dagger.hilt.android.qualifiers.ApplicationContext
 import dev.kdrag0n.quicklock.server.ApiClient
 import dev.kdrag0n.quicklock.util.EventFlow
 import kotlinx.coroutines.launch
@@ -16,10 +13,19 @@ class MainViewModel @Inject constructor(
     private val client: ApiClient,
 ) : ViewModel() {
     val unlockFlow = EventFlow()
+    val scanFlow = EventFlow()
+    val displayFlow = EventFlow()
 
     fun pair() {
         viewModelScope.launch {
-            client.pair()
+            val challenge = client.startPair()
+            if (challenge.isInitial) {
+                // Initial: scan QR to get the secret
+                scanFlow.emit()
+            } else {
+                // Delegated: get signature from other device
+                displayFlow.emit()
+            }
         }
     }
 

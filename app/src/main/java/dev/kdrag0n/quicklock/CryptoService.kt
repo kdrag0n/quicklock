@@ -6,6 +6,7 @@ import android.util.Base64
 import dagger.Reusable
 import java.security.KeyPairGenerator
 import java.security.KeyStore
+import java.security.PublicKey
 import java.security.Signature
 import java.util.*
 import javax.inject.Inject
@@ -18,29 +19,30 @@ class CryptoService @Inject constructor() {
         }
     }
 
-    private val entry
-        get() = loadEntry()
+    private fun getKeyEntry(alias: String = ALIAS) =
+        keystore.getEntry(alias, null) as KeyStore.PrivateKeyEntry
 
     val publicKeyEncoded
-        get() = Base64.encode(entry.certificate.publicKey.encoded, Base64.NO_WRAP).decodeToString()
+        get() = getKeyEntry().certificate.publicKey.encoded.toBase64()
 
-    private fun loadEntry(): KeyStore.PrivateKeyEntry {
-        return keystore.getEntry(ALIAS, null) as KeyStore.PrivateKeyEntry
-    }
+    fun generateKey(challengeId: String, isDelegation: Boolean = false): PublicKey {
+        val alias = if (isDelegation) DELEGATION_ALIAS else ALIAS
 
-    fun generateKey(challengeId: String) {
         // Delete existing key if necessary
         try {
-            keystore.deleteEntry(ALIAS)
+            keystore.deleteEntry(alias)
         } catch (e: Exception) {
             // ignored
         }
 
         val gen = KeyPairGenerator.getInstance("EC", "AndroidKeyStore")
-        val spec = KeyGenParameterSpec.Builder(ALIAS, KeyProperties.PURPOSE_SIGN).run {
+        val spec = KeyGenParameterSpec.Builder(alias, KeyProperties.PURPOSE_SIGN).run {
             setKeyValidityStart(Date())
             setAttestationChallenge(challengeId.encodeToByteArray())
             setDevicePropertiesAttestationIncluded(true)
+            if (isDelegation) {
+//                setUserConfirmationRequired(true)
+            }
 
             setDigests(KeyProperties.DIGEST_SHA256)
             setIsStrongBoxBacked(true)
@@ -48,23 +50,27 @@ class CryptoService @Inject constructor() {
         }
 
         gen.initialize(spec)
-        gen.generateKeyPair()
+        return gen.generateKeyPair().public
     }
 
-    fun signPayload(payload: String): String {
+    fun signPayload(payload: String, alias: String = ALIAS): String {
         val bytes = payload.encodeToByteArray()
         val sig = Signature.getInstance("SHA256withECDSA")
-        sig.initSign(entry.privateKey)
+        sig.initSign(getKeyEntry(alias).privateKey)
         sig.update(bytes)
         val signature = sig.sign()
-        return Base64.encode(signature, Base64.NO_WRAP).decodeToString()
+        return signature.toBase64()
     }
 
-    fun getAttestationChain() = keystore.getCertificateChain(ALIAS).map {
-        Base64.encode(it.encoded, Base64.NO_WRAP).decodeToString()
+    fun getAttestationChain(alias: String = ALIAS) = keystore.getCertificateChain(alias).map {
+        it.encoded.toBase64()
     }
 
     companion object {
         const val ALIAS = "lock_main"
+        const val DELEGATION_ALIAS = "lock_delegation"
     }
 }
+
+fun ByteArray.toBase64(): String =
+    Base64.encodeToString(this, Base64.NO_WRAP)

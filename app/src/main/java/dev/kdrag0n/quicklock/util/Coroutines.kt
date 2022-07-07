@@ -4,6 +4,7 @@ import androidx.lifecycle.*
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.AbstractFlow
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.FlowCollector
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.launch
@@ -13,6 +14,11 @@ fun LifecycleOwner.launchStarted(block: suspend CoroutineScope.() -> Unit) {
         repeatOnLifecycle(Lifecycle.State.STARTED, block)
     }
 }
+
+fun <T> Flow<T>.launchCollect(scope: CoroutineScope, collector: FlowCollector<T>) =
+    scope.launch {
+        collect(collector)
+    }
 
 @OptIn(FlowPreview::class)
 class EventFlow : AbstractFlow<Unit>() {

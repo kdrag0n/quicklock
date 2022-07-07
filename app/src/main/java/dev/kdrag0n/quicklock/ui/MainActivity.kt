@@ -15,6 +15,8 @@ import androidx.compose.ui.unit.dp
 import dagger.hilt.android.AndroidEntryPoint
 import dev.kdrag0n.quicklock.MainViewModel
 import dev.kdrag0n.quicklock.ui.theme.AppTheme
+import dev.kdrag0n.quicklock.util.launchCollect
+import dev.kdrag0n.quicklock.util.launchStarted
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
@@ -30,6 +32,16 @@ class MainActivity : ComponentActivity() {
                 ) {
                     MainScreen(model)
                 }
+            }
+        }
+
+        launchStarted {
+            model.scanFlow.launchCollect(this) {
+                startActivity(Intent(this@MainActivity, QrScanActivity::class.java))
+            }
+
+            model.displayFlow.launchCollect(this) {
+                startActivity(Intent(this@MainActivity, QrDisplayActivity::class.java))
             }
         }
     }
@@ -57,7 +69,18 @@ private fun MainScreen(
 
             Divider()
 
+
             val context = LocalContext.current
+            FilledTonalButton(
+                onClick = {
+                    context.startActivity(Intent(context, QrScanActivity::class.java))
+                }
+            ) {
+                Text("Add device")
+            }
+
+            Divider()
+
             TextButton(
                 onClick = {
                     context.startActivity(Intent(context, NfcWriteActivity::class.java))
