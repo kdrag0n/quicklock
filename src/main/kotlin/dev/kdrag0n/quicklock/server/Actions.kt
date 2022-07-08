@@ -16,6 +16,7 @@ import kotlin.math.abs
 
 @Serializable
 private data class UnlockPayload(
+    val entityId: String,
     val publicKey: String,
     val timestamp: Long,
 )
@@ -31,8 +32,8 @@ private val logger = LoggerFactory.getLogger("Actions")
 fun Application.actionsModule() = routing {
     post("/api/unlock") {
         val (payload, signature) = call.receive<WrappedUnlockRequest>()
-        val (publicKey, timestamp) = Json.decodeFromString<UnlockPayload>(payload)
-        Storage.getDeviceByKey(publicKey)
+        val (entityId, publicKey, timestamp) = Json.decodeFromString<UnlockPayload>(payload)
+        Storage.getDeviceByKey(publicKey, entityId)
 
         Crypto.verifySignature(payload, publicKey, signature)
 
@@ -41,14 +42,14 @@ fun Application.actionsModule() = routing {
 
         // Unlock
         logger.info("Posting HA unlock")
-        HomeAssistant.postLock(true)
+        HomeAssistant.postLock(true, entityId)
         call.respond(HttpStatusCode.OK)
 
         // Re-lock after delay
         launch {
             delay(Config.RELOCK_DELAY)
             logger.info("Posting HA lock")
-            HomeAssistant.postLock(false)
+            HomeAssistant.postLock(false, entityId)
         }
     }
 }

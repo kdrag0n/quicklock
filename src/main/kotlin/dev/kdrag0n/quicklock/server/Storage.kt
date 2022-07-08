@@ -17,6 +17,8 @@ data class PairedDevice(
     val expiresAt: Long,
     // Device that authorized this. Null for initial setup
     val delegatedBy: String?,
+    // Null for all
+    val allowedEntities: List<String>?,
 )
 
 object Storage {
@@ -45,10 +47,11 @@ object Storage {
         writeDevices()
     }
 
-    fun getDeviceByKey(publicKey: String): PairedDevice {
+    fun getDeviceByKey(publicKey: String, entityId: String? = null): PairedDevice {
         val device = devices[publicKey]
         requireNotNull(device)
         require(device.expiresAt >= System.currentTimeMillis())
+        entityId?.let { require(device.allowedEntities == null || it in device.allowedEntities) }
 
         return device
     }

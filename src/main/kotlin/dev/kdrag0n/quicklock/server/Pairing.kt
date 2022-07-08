@@ -27,7 +27,7 @@ private data class Challenge(
 
 private val challenges = HashMap<String, Challenge>()
 private val finishPayloads = HashMap<String, String>()
-private val delegationSignatures = HashMap<String, DelegationSignature>()
+private val delegationSignatures = HashMap<String, SignedDelegation>()
 
 @Serializable
 private data class InitialPairQr(
@@ -50,15 +50,23 @@ private data class InitialPairFinishRequest(
 )
 
 @Serializable
-private data class DelegationSignature(
+private data class Delegation(
+    val finishPayload: String,
+    val expiresAt: Long,
+    val allowedEntities: List<String>?,
+)
+
+@Serializable
+private data class SignedDelegation(
     val device: String,
+    val delegation: String,
     val signature: String,
 )
 
 @Serializable
 private data class DelegatedPairFinishRequest(
     val payload: String,
-    val signature: DelegationSignature,
+    val signature: SignedDelegation,
 )
 
 private fun generateSecret(): String {
@@ -72,7 +80,12 @@ private fun generateSecret(): String {
 private var initialPairingSecret: String? = null
 
 fun Application.pairingModule() = routing {
-    fun finishPair(req: PairFinishPayload, delegatedBy: String?) {
+    fun finishPair(
+        req: PairFinishPayload,
+        delegatedBy: String?,
+        expiresAt: Long = Long.MAX_VALUE,
+        allowedEntities: List<String>? = null,
+    ) {
         val challenge = challenges[req.challengeId]!!
 
         try {
@@ -90,8 +103,10 @@ fun Application.pairingModule() = routing {
             Storage.addDevice(PairedDevice(
                 publicKey = req.publicKey,
                 delegationKey = req.delegationKey,
-                expiresAt = Long.MAX_VALUE,
+                // Params
+                expiresAt = expiresAt,
                 delegatedBy = delegatedBy,
+                allowedEntities = allowedEntities,
             ))
         } finally {
             // Drop challenge
@@ -192,19 +207,27 @@ fun Application.pairingModule() = routing {
         require(id in finishPayloads)
         require(id !in delegationSignatures)
 
-        val signature = call.receive<DelegationSignature>()
+        val signature = call.receive<SignedDelegation>()
         delegationSignatures[id] = signature
         call.respond(HttpStatusCode.OK)
     }
 
     post("/api/pair/delegated/finish") {
         val req = call.receive<DelegatedPairFinishRequest>()
-        val (delegatedBy, signature) = req.signature
+        val (delegatedBy, delegationData, signature) = req.signature
         val device = Storage.getDeviceByKey(delegatedBy)
-        Crypto.verifySignature(req.payload, device.delegationKey, signature)
+        Crypto.verifySignature(delegationData, device.delegationKey, signature)
 
+        val (confirmedPayload, expiresAt, allowedEntities) = Json.decodeFromString<Delegation>(delegationData)
+        require(req.payload == confirmedPayload)
         val payload = Json.decodeFromString<PairFinishPayload>(req.payload)
-        finishPair(payload, delegatedBy = delegatedBy)
+
+        finishPair(
+            payload,
+            delegatedBy = delegatedBy,
+            expiresAt = expiresAt,
+            allowedEntities = allowedEntities,
+        )
 
         call.respond(HttpStatusCode.OK)
     }
