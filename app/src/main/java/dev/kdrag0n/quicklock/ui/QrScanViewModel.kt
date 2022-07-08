@@ -4,9 +4,7 @@ import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
-import dev.kdrag0n.quicklock.CryptoService
 import dev.kdrag0n.quicklock.server.ApiClient
-import dev.kdrag0n.quicklock.server.DelegationSignature
 import dev.kdrag0n.quicklock.util.EventFlow
 import kotlinx.coroutines.launch
 import javax.inject.Inject

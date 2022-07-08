@@ -1,13 +1,16 @@
 package dev.kdrag0n.quicklock.ui
 
+import android.annotation.SuppressLint
 import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
+import androidx.appcompat.app.AppCompatActivity
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -15,11 +18,12 @@ import androidx.compose.ui.unit.dp
 import dagger.hilt.android.AndroidEntryPoint
 import dev.kdrag0n.quicklock.MainViewModel
 import dev.kdrag0n.quicklock.ui.theme.AppTheme
+import dev.kdrag0n.quicklock.util.collectAsLifecycleState
 import dev.kdrag0n.quicklock.util.launchCollect
 import dev.kdrag0n.quicklock.util.launchStarted
 
 @AndroidEntryPoint
-class MainActivity : ComponentActivity() {
+class MainActivity : AppCompatActivity() {
     private val model: MainViewModel by viewModels()
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -47,6 +51,7 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+@SuppressLint("UnsafeOptInUsageError")
 @Composable
 private fun MainScreen(
     model: MainViewModel,
@@ -59,16 +64,19 @@ private fun MainScreen(
             verticalArrangement = Arrangement.spacedBy(16.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Button(onClick = { model.pair() }) {
-                Text("Pair")
-            }
+            val entities by model.entities.collectAsLifecycleState()
 
-            Button(onClick = { model.unlock() }) {
-                Text("Unlock")
+            entities.forEach { entity ->
+                Button(onClick = { model.unlock(entity.id) }) {
+                    Text("Unlock ‘${entity.name}’")
+                }
             }
 
             Divider()
 
+            FilledTonalButton(onClick = { model.pair() }) {
+                Text("Pair")
+            }
 
             val context = LocalContext.current
             FilledTonalButton(

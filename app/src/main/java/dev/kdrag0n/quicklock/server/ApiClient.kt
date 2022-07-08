@@ -5,6 +5,10 @@ import dev.kdrag0n.quicklock.CryptoService
 import dev.kdrag0n.quicklock.toBase64
 import dev.kdrag0n.quicklock.util.EventFlow
 import dev.kdrag0n.quicklock.util.toBase1024
+import kotlinx.coroutines.DelicateCoroutinesApi
+import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.launch
 import okio.ByteString.Companion.decodeBase64
 import java.io.IOException
 import java.security.Signature
@@ -22,12 +26,14 @@ data class DelegationState(
     val finishPayloadData: String,
 )
 
+@OptIn(DelicateCoroutinesApi::class)
 @Singleton
 class ApiClient @Inject constructor(
     private val service: ApiService,
     private val crypto: CryptoService,
     moshi: Moshi,
 ) {
+    private val delegationAdapter = moshi.adapter(Delegation::class.java)
     private val initialQrAdapter = moshi.adapter(InitialPairQr::class.java)
     private val delegatedQrAdapter = moshi.adapter(DelegatedPairQr::class.java)
     private val pairFinishAdapter = moshi.adapter(PairFinishPayload::class.java)
@@ -36,6 +42,19 @@ class ApiClient @Inject constructor(
     var currentDelegationState: DelegationState? = null
 
     val pairFinishedFlow = EventFlow()
+
+    val entities = MutableStateFlow<List<Entity>>(emptyList())
+
+    init {
+        GlobalScope.launch {
+            entities.value = getEntities()
+        }
+    }
+
+    private suspend fun getEntities() = service.getEntities().let {
+        val body = if (it.isSuccessful) it.body() else null
+        body ?: throw RequestException(it.errorBody()?.string() ?: "Unknown error")
+    }
 
     suspend fun startPair(): Challenge {
         currentPairState?.let {
@@ -111,7 +130,7 @@ class ApiClient @Inject constructor(
         }
     }
 
-    private suspend fun finishDelegatedPair(signature: DelegationSignature) {
+    private suspend fun finishDelegatedPair(signature: SignedDelegation) {
         val state = currentPairState ?: return
         service.finishDelegatedPair(DelegatedPairFinishRequest(
             payload = state.finishPayload,
@@ -144,19 +163,28 @@ class ApiClient @Inject constructor(
         return crypto.prepareSignature(alias = CryptoService.DELEGATION_ALIAS)
     }
 
-    suspend fun signAndUploadDelegation(sig: Signature) {
+    suspend fun signAndUploadDelegation(sig: Signature, expiresAt: Long, allowedEntities: List<String>?) {
         val (req, reqData) = currentDelegationState ?: return
 
-        val signature = DelegationSignature(
+        val delegation = Delegation(
+            finishPayload = reqData,
+            expiresAt = expiresAt,
+            allowedEntities = allowedEntities,
+        )
+        val delegationData = delegationAdapter.toJson(delegation)
+
+        val signature = SignedDelegation(
             device = crypto.publicKeyEncoded,
-            signature = crypto.finishSignature(sig, reqData),
+            delegation = delegationData,
+            signature = crypto.finishSignature(sig, delegationData),
         )
         service.uploadDelegatedPairSignature(req.challengeId, signature)
         currentDelegationState = null
     }
 
-    suspend fun unlock() {
+    suspend fun unlock(entityId: String) {
         val payload = UnlockPayload(
+            entityId = entityId,
             publicKey = crypto.publicKeyEncoded,
             timestamp = System.currentTimeMillis(),
         )

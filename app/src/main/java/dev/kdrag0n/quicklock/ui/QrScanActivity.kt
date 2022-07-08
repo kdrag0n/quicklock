@@ -5,9 +5,9 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Bundle
 import android.util.Size
-import androidx.activity.ComponentActivity
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
+import androidx.appcompat.app.AppCompatActivity
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ExperimentalGetImage
 import androidx.camera.core.ImageAnalysis
@@ -27,7 +27,7 @@ import java.util.concurrent.Executors
 
 @AndroidEntryPoint
 @ExperimentalGetImage
-class QrScanActivity : ComponentActivity(R.layout.activity_qr_scan) {
+class QrScanActivity : AppCompatActivity(R.layout.activity_qr_scan) {
     private val model: QrScanViewModel by viewModels()
 
     private val launcher = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->

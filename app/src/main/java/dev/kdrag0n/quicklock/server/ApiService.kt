@@ -8,6 +8,9 @@ import retrofit2.http.POST
 import retrofit2.http.Path
 
 interface ApiService {
+    @GET("/api/entity")
+    suspend fun getEntities(): Response<List<Entity>>
+
     @POST("/api/pair/initial/start")
     suspend fun startInitialPair(): Response<Unit>
 
@@ -24,12 +27,12 @@ interface ApiService {
     ): Response<Unit>
 
     @GET("/api/pair/delegated/{challengeId}/signature")
-    suspend fun getDelegatedPairSignature(@Path("challengeId") challengeId: String): Response<DelegationSignature>
+    suspend fun getDelegatedPairSignature(@Path("challengeId") challengeId: String): Response<SignedDelegation>
 
     @POST("/api/pair/delegated/{challengeId}/signature")
     suspend fun uploadDelegatedPairSignature(
         @Path("challengeId") challengeId: String,
-        @Body signature: DelegationSignature,
+        @Body signature: SignedDelegation,
     ): Response<Unit>
 
     @POST("/api/pair/delegated/finish")
@@ -41,6 +44,13 @@ interface ApiService {
     @POST("/api/unlock")
     suspend fun unlock(@Body request: UnlockRequest): Response<Unit>
 }
+
+@JsonClass(generateAdapter = true)
+data class Entity(
+    val id: String,
+    val name: String,
+    val haEntity: String,
+)
 
 @JsonClass(generateAdapter = true)
 data class Challenge(
@@ -69,8 +79,16 @@ data class PairFinishPayload(
 )
 
 @JsonClass(generateAdapter = true)
-data class DelegationSignature(
+data class Delegation(
+    val finishPayload: String,
+    val expiresAt: Long,
+    val allowedEntities: List<String>?,
+)
+
+@JsonClass(generateAdapter = true)
+data class SignedDelegation(
     val device: String,
+    val delegation: String,
     val signature: String,
 )
 
@@ -83,11 +101,12 @@ data class InitialPairFinishRequest(
 @JsonClass(generateAdapter = true)
 data class DelegatedPairFinishRequest(
     val payload: String,
-    val signature: DelegationSignature,
+    val signature: SignedDelegation,
 )
 
 @JsonClass(generateAdapter = true)
 data class UnlockPayload(
+    val entityId: String,
     val publicKey: String,
     val timestamp: Long,
 )

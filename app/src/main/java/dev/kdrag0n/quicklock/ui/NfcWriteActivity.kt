@@ -11,24 +11,21 @@ import android.os.PersistableBundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
+import androidx.appcompat.app.AppCompatActivity
+import androidx.compose.foundation.layout.*
+import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import dagger.hilt.android.AndroidEntryPoint
 import dev.kdrag0n.quicklock.ui.theme.AppTheme
+import dev.kdrag0n.quicklock.util.collectAsLifecycleState
 import dev.kdrag0n.quicklock.util.launchStarted
 
 @AndroidEntryPoint
-class NfcWriteActivity : ComponentActivity() {
+class NfcWriteActivity : AppCompatActivity() {
     private val model: NfcWriteViewModel by viewModels()
     private lateinit var nfcAdapter: NfcAdapter
 
@@ -43,7 +40,7 @@ class NfcWriteActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background,
                 ) {
-                    NfcWriteScreen()
+                    NfcWriteScreen(model)
                 }
             }
         }
@@ -84,18 +81,45 @@ class NfcWriteActivity : ComponentActivity() {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun NfcWriteScreen() {
+private fun NfcWriteScreen(
+    model: NfcWriteViewModel,
+) {
     Box(
         modifier = Modifier.fillMaxSize(),
         contentAlignment = Alignment.Center,
     ) {
         Column(
-            verticalArrangement = Arrangement.spacedBy(16.dp),
+            verticalArrangement = Arrangement.spacedBy(32.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Text("Tap NFC tag to write")
-            CircularProgressIndicator()
+            val entities by model.entities.collectAsLifecycleState()
+
+            Column {
+                Text("Select lock")
+
+                entities.forEach { entity ->
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        RadioButton(
+                            selected = entity == model.entity,
+                            onClick = { model.entity = entity },
+                        )
+                        Text(entity.name)
+                    }
+                }
+            }
+
+            Column(
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Text("Tap NFC tag to write")
+                CircularProgressIndicator()
+            }
         }
     }
 }

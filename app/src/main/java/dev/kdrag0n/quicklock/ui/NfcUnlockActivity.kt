@@ -5,6 +5,7 @@ import android.os.PersistableBundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
+import androidx.appcompat.app.AppCompatActivity
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -21,10 +22,13 @@ import androidx.lifecycle.lifecycleScope
 import dagger.hilt.android.AndroidEntryPoint
 import dev.kdrag0n.quicklock.MainViewModel
 import dev.kdrag0n.quicklock.ui.theme.AppTheme
+import dev.kdrag0n.quicklock.util.launchCollect
 import dev.kdrag0n.quicklock.util.launchStarted
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.take
 
 @AndroidEntryPoint
-class NfcUnlockActivity : ComponentActivity() {
+class NfcUnlockActivity : AppCompatActivity() {
     private val model: MainViewModel by viewModels()
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -42,13 +46,14 @@ class NfcUnlockActivity : ComponentActivity() {
         }
 
         launchStarted {
-            model.unlockFlow.collect {
+            model.unlockFlow.launchCollect(this) {
                 finish()
             }
         }
 
+        val entityId = intent.data!!.getQueryParameter("entity")!!
         lifecycleScope.launchWhenStarted {
-            model.unlock()
+            model.unlock(entityId)
         }
     }
 }
