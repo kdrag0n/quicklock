@@ -71,6 +71,9 @@ private fun MainScreen(
                     Text("Unlock ‘${entity.name}’")
                 }
             }
+            if (entities.isEmpty()) {
+                CircularProgressIndicator()
+            }
 
             Divider()
 
