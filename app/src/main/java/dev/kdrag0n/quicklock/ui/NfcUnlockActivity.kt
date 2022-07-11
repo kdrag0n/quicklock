@@ -24,6 +24,7 @@ import dev.kdrag0n.quicklock.MainViewModel
 import dev.kdrag0n.quicklock.ui.theme.AppTheme
 import dev.kdrag0n.quicklock.util.launchCollect
 import dev.kdrag0n.quicklock.util.launchStarted
+import dev.kdrag0n.quicklock.util.setAppContent
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.take
 
@@ -34,15 +35,8 @@ class NfcUnlockActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        setContent {
-            AppTheme {
-                Surface(
-                    modifier = Modifier.fillMaxSize(),
-                    color = MaterialTheme.colorScheme.background,
-                ) {
-                    NfcUnlockScreen()
-                }
-            }
+        setAppContent {
+            NfcUnlockScreen()
         }
 
         launchStarted {

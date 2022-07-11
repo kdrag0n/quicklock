@@ -21,6 +21,7 @@ import com.google.android.material.datepicker.MaterialDatePicker
 import dagger.hilt.android.AndroidEntryPoint
 import dev.kdrag0n.quicklock.util.launchCollect
 import dev.kdrag0n.quicklock.util.launchStarted
+import dev.kdrag0n.quicklock.util.setAppContent
 
 private const val TAG_DATE_PICKER = "datePicker"
 
@@ -31,18 +32,13 @@ class ConfirmDelegationActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        setContent {
-            Surface(
-                modifier = Modifier.fillMaxSize(),
-                color = MaterialTheme.colorScheme.background,
-            ) {
-                ConfirmDelegationScreen(
-                    model,
-                    onConfirm = {
-                        requestAuth()
-                    }
-                )
-            }
+        setAppContent {
+            ConfirmDelegationScreen(
+                model,
+                onConfirm = {
+                    requestAuth()
+                }
+            )
         }
 
         launchStarted {
@@ -117,6 +113,7 @@ private fun ConfirmDelegationScreen(
             Text(
                 model.publicKeyEmoji,
                 fontSize = 64.sp,
+                lineHeight = 96.sp,
                 textAlign = TextAlign.Center,
             )
 

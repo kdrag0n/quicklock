@@ -21,6 +21,7 @@ import dev.kdrag0n.quicklock.ui.theme.AppTheme
 import dev.kdrag0n.quicklock.util.collectAsLifecycleState
 import dev.kdrag0n.quicklock.util.launchCollect
 import dev.kdrag0n.quicklock.util.launchStarted
+import dev.kdrag0n.quicklock.util.setAppContent
 
 @AndroidEntryPoint
 class MainActivity : AppCompatActivity() {
@@ -28,15 +29,8 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContent {
-            AppTheme {
-                Surface(
-                    modifier = Modifier.fillMaxSize(),
-                    color = MaterialTheme.colorScheme.background,
-                ) {
-                    MainScreen(model)
-                }
-            }
+        setAppContent {
+            MainScreen(model)
         }
 
         launchStarted {

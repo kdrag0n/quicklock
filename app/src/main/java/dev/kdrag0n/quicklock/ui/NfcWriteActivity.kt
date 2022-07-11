@@ -23,6 +23,7 @@ import dagger.hilt.android.AndroidEntryPoint
 import dev.kdrag0n.quicklock.ui.theme.AppTheme
 import dev.kdrag0n.quicklock.util.collectAsLifecycleState
 import dev.kdrag0n.quicklock.util.launchStarted
+import dev.kdrag0n.quicklock.util.setAppContent
 
 @AndroidEntryPoint
 class NfcWriteActivity : AppCompatActivity() {
@@ -34,15 +35,8 @@ class NfcWriteActivity : AppCompatActivity() {
 
         nfcAdapter = NfcAdapter.getDefaultAdapter(this)!!
 
-        setContent {
-            AppTheme {
-                Surface(
-                    modifier = Modifier.fillMaxSize(),
-                    color = MaterialTheme.colorScheme.background,
-                ) {
-                    NfcWriteScreen(model)
-                }
-            }
+        setAppContent {
+            NfcWriteScreen(model)
         }
 
         launchStarted {

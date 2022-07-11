@@ -20,6 +20,7 @@ import androidx.compose.ui.unit.sp
 import dagger.hilt.android.AndroidEntryPoint
 import dev.kdrag0n.quicklock.util.launchCollect
 import dev.kdrag0n.quicklock.util.launchStarted
+import dev.kdrag0n.quicklock.util.setAppContent
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -34,13 +35,8 @@ class QrDisplayActivity : AppCompatActivity() {
             finish()
         }
 
-        setContent {
-            Surface(
-                modifier = Modifier.fillMaxSize(),
-                color = MaterialTheme.colorScheme.background,
-            ) {
-                QrDisplayScreen(model)
-            }
+        setAppContent {
+            QrDisplayScreen(model)
         }
 
         launchStarted {
@@ -78,6 +74,7 @@ private fun QrDisplayScreen(model: QrDisplayViewModel) {
                 Text(
                     model.publicKeyEmoji,
                     fontSize = 64.sp,
+                    lineHeight = 96.sp,
                     textAlign = TextAlign.Center,
                 )
             }
