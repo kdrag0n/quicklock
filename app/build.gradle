@@ -72,6 +72,7 @@ dependencies {
     implementation "androidx.camera:camera-extensions:${camerax_version}"
     implementation "com.google.mlkit:barcode-scanning:17.0.2"
     implementation 'com.journeyapps:zxing-android-embedded:4.3.0'
+    implementation 'com.google.android.gms:play-services-location:20.0.0'
 
     implementation 'com.squareup.retrofit2:retrofit:2.9.0'
     implementation 'com.squareup.retrofit2:converter-moshi:2.9.0'
