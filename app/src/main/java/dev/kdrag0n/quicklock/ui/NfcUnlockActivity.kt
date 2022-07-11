@@ -2,8 +2,6 @@ package dev.kdrag0n.quicklock.ui
 
 import android.os.Bundle
 import android.os.PersistableBundle
-import android.os.SystemClock
-import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
@@ -21,10 +19,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.lifecycleScope
-import com.google.android.gms.location.CurrentLocationRequest
-import com.google.android.gms.location.Granularity
-import com.google.android.gms.location.LocationServices
-import com.google.android.gms.location.Priority
 import dagger.hilt.android.AndroidEntryPoint
 import dev.kdrag0n.quicklock.MainViewModel
 import dev.kdrag0n.quicklock.ui.theme.AppTheme
@@ -52,20 +46,8 @@ class NfcUnlockActivity : AppCompatActivity() {
         }
 
         val entityId = intent.data!!.getQueryParameter("entity")!!
-        Log.d("NFU", "start")
         lifecycleScope.launchWhenStarted {
-            val client = LocationServices.getFusedLocationProviderClient(this@NfcUnlockActivity)
-            val req = CurrentLocationRequest.Builder().run {
-                setGranularity(Granularity.GRANULARITY_FINE)
-                setPriority(Priority.PRIORITY_BALANCED_POWER_ACCURACY)
-                build()
-            }
-
-            client.getCurrentLocation(req, null).addOnSuccessListener { loc ->
-                Log.d("NFU", "got loc $loc  (${loc.latitude}, ${loc.longitude})")
-                model.unlock(entityId)
-            }
-
+            model.unlock(entityId)
         }
     }
 }
