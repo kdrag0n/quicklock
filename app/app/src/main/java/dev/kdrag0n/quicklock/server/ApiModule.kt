@@ -15,7 +15,7 @@ object ApiModule {
     @Provides
     @Reusable
     fun provideApiService() = Retrofit.Builder().run {
-        baseUrl("http://171.66.3.225:3002/")
+        baseUrl("http://192.168.20.127:3002/")
         addConverterFactory(MoshiConverterFactory.create())
         build()
     }.create(ApiService::class.java)

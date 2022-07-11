@@ -15,6 +15,8 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import okio.ByteString.Companion.decodeBase64
+import okio.ByteString.Companion.toByteString
 import java.security.SecureRandom
 import java.util.*
 
@@ -46,7 +48,7 @@ private data class PairFinishPayload(
 @Serializable
 private data class InitialPairFinishRequest(
     val payload: String,
-    val initialSecret: String,
+    val hmac: String,
 )
 
 @Serializable
@@ -131,7 +133,7 @@ fun Application.pairingModule() = routing {
         // Open QR page locally (on server)
         withContext(Dispatchers.IO) {
             println("url ${"open 'http://localhost:3002/api/pair/initial/start/qr?secret=$secret'"}")
-            Runtime.getRuntime().exec("open 'http://localhost:3002/api/pair/initial/start/qr?secret=$secret'")
+            Runtime.getRuntime().exec("xdg-open 'http://localhost:3002/api/pair/initial/start/qr?secret=$secret'")
         }
 
         call.respond(HttpStatusCode.OK)
@@ -155,7 +157,13 @@ fun Application.pairingModule() = routing {
 
     post("/api/pair/initial/finish") {
         val req = call.receive<InitialPairFinishRequest>()
-        require(req.initialSecret == initialPairingSecret)
+
+        // Verify HMAC
+        val secret = initialPairingSecret!!
+        val expectedMac = req.payload.toByteArray().toByteString()
+            .hmacSha256(secret.decodeBase64()!!)
+            .toByteArray()
+        require(expectedMac cryptoEq req.hmac.decodeBase64()!!.toByteArray())
         initialPairingSecret = null
 
         val payload = Json.decodeFromString<PairFinishPayload>(req.payload)
@@ -247,4 +255,12 @@ fun Application.pairingModule() = routing {
 
         call.respond(challenge)
     }
+}
+
+private infix fun ByteArray.cryptoEq(other: ByteArray): Boolean {
+    var n = 0
+    for (i in indices) {
+        n = n or (this[i].toInt() xor other[i].toInt())
+    }
+    return n == 0
 }

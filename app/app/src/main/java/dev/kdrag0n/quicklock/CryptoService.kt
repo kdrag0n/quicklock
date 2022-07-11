@@ -25,6 +25,9 @@ class CryptoService @Inject constructor() {
     val publicKeyEncoded
         get() = getKeyEntry().certificate.publicKey.encoded.toBase64()
 
+    val delegationKeyEncoded
+        get() = getKeyEntry(alias = DELEGATION_ALIAS).certificate.publicKey.encoded.toBase64()
+
     fun generateKey(challengeId: String, isDelegation: Boolean = false): PublicKey {
         val alias = if (isDelegation) DELEGATION_ALIAS else ALIAS
 

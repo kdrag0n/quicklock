@@ -9,7 +9,9 @@ import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
+import okio.ByteString
 import okio.ByteString.Companion.decodeBase64
+import okio.ByteString.Companion.toByteString
 import java.io.IOException
 import java.security.Signature
 import javax.inject.Inject
@@ -98,15 +100,16 @@ class ApiClient @Inject constructor(
     }
 
     fun getPublicKeyEmoji() =
-        publicKeyToEmoji(crypto.publicKeyEncoded)
+        publicKeysToEmoji(crypto.publicKeyEncoded, crypto.delegationKeyEncoded)
 
     fun getDelegateeKeyEmoji() =
         currentDelegationState?.finishPayload?.let {
-            publicKeyToEmoji(it.publicKey)
+            publicKeysToEmoji(it.publicKey, it.delegationKey)
         } ?: ""
 
     // First 80 bits of the public key's SHA-256, as emoji
-    private fun publicKeyToEmoji(data: String) = data.decodeBase64()!!
+    private fun publicKeysToEmoji(mainPk: String, delegationPk: String) =
+        (mainPk.decodeBase64()!! + delegationPk.decodeBase64()!!)
         .sha256().toByteArray()
         .toBase1024()
 
@@ -115,7 +118,10 @@ class ApiClient @Inject constructor(
         val state = currentPairState ?: return
         service.finishInitialPair(InitialPairFinishRequest(
             payload = state.finishPayload,
-            initialSecret = payload.secret,
+            // HMAC using secret. Proves auth without being vulnerable to MITM.
+            hmac = state.finishPayload.toByteArray().toByteString()
+                .hmacSha256(payload.secret.decodeBase64()!!)
+                .base64(),
         ))
         currentPairState = null
 
@@ -200,3 +206,5 @@ class ApiClient @Inject constructor(
 }
 
 class RequestException(message: String) : IOException(message)
+
+private operator fun ByteString.plus(other: ByteString) = (toByteArray() + other.toByteArray()).toByteString()
