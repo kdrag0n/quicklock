@@ -90,3 +90,6 @@ class CryptoService @Inject constructor() {
 
 fun ByteArray.toBase64(): String =
     Base64.encodeToString(this, Base64.NO_WRAP)
+
+fun String.decodeBase64Url(): ByteArray =
+    Base64.decode(this, Base64.URL_SAFE)

@@ -63,6 +63,9 @@ object Crypto {
 fun String.decodeBase64(): ByteArray =
     Base64.getDecoder().decode(this)
 
+fun String.decodeBase64Url(): ByteArray =
+    Base64.getUrlDecoder().decode(this)
+
 fun ByteArray.toBase64(): String =
     Base64.getEncoder().encodeToString(this)
 

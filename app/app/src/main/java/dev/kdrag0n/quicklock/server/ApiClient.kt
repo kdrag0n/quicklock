@@ -2,6 +2,7 @@ package dev.kdrag0n.quicklock.server
 
 import com.squareup.moshi.Moshi
 import dev.kdrag0n.quicklock.CryptoService
+import dev.kdrag0n.quicklock.decodeBase64Url
 import dev.kdrag0n.quicklock.toBase64
 import dev.kdrag0n.quicklock.util.EventFlow
 import dev.kdrag0n.quicklock.util.toBase1024
@@ -120,7 +121,7 @@ class ApiClient @Inject constructor(
             payload = state.finishPayload,
             // HMAC using secret. Proves auth without being vulnerable to MITM.
             hmac = state.finishPayload.toByteArray().toByteString()
-                .hmacSha256(payload.secret.decodeBase64()!!)
+                .hmacSha256(payload.secret.decodeBase64Url().toByteString())
                 .base64(),
         ))
         currentPairState = null

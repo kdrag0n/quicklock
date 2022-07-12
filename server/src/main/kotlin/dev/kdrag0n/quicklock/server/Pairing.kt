@@ -72,7 +72,6 @@ private data class DelegatedPairFinishRequest(
 )
 
 private fun generateSecret(): String {
-    val random = SecureRandom()
     val secret = ByteArray(32)
     SecureRandom.getInstanceStrong().nextBytes(secret)
     return secret.toBase64Url()
@@ -161,7 +160,7 @@ fun Application.pairingModule() = routing {
         // Verify HMAC
         val secret = initialPairingSecret!!
         val expectedMac = req.payload.toByteArray().toByteString()
-            .hmacSha256(secret.decodeBase64()!!)
+            .hmacSha256(secret.decodeBase64Url().toByteString())
             .toByteArray()
         require(expectedMac cryptoEq req.hmac.decodeBase64()!!.toByteArray())
         initialPairingSecret = null
