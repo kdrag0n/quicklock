@@ -40,6 +40,8 @@ dependencies {
     implementation("com.google.code.gson:gson:2.9.0")
     implementation("com.google.zxing:core:3.5.0")
     implementation("com.google.zxing:javase:3.5.0")
+    implementation("com.yubico:webauthn-server-core:2.0.0")
+    implementation("com.webauthn4j:webauthn4j-core:0.20.1.RELEASE")
 
     testImplementation("io.ktor:ktor-server-tests-jvm:$ktor_version")
     testImplementation("org.jetbrains.kotlin:kotlin-test-junit:$kotlin_version")
