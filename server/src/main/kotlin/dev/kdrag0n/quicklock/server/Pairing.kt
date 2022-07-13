@@ -31,7 +31,7 @@ data class PairingChallenge(
 }
 
 val pairingChallenges = HashMap<String, PairingChallenge>()
-private val finishPayloads = HashMap<String, String>()
+val finishPayloads = HashMap<String, String>()
 private val delegationSignatures = HashMap<String, SignedDelegation>()
 
 @Serializable

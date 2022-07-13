@@ -1,9 +1,10 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import logo from './logo.svg';
 import './App.css';
-import { Button, Divider, Loader } from '@mantine/core';
+import { Button, Divider, Loader, Text } from '@mantine/core';
 import useSWR from 'swr';
 import * as base64 from 'base64-arraybuffer'
+import QRCode from 'react-qr-code'
 
 const API_BASE_URL = 'http://localhost:3002/api'
 
@@ -49,6 +50,20 @@ interface UnlockFinishWA {
   authenticatorData: string
 }
 
+interface PairDelegationWA {
+  challengeId: string
+  pairFinishPayload: PairFinishWA
+  expiresAt: number
+  allowedEntities: string[] | null
+}
+
+interface DelegatedPairFinishWA {
+  delegationKeyId: string
+  signature: string
+  clientDataJSON: string
+  authenticatorData: string
+}
+
 function toBytes(str: string) {
   return Uint8Array.from(str, c => c.charCodeAt(0))
 }
@@ -80,7 +95,8 @@ async function unlock(entity: Entity) {
         id: base64.decode(getCredentialId()),
       }],
       timeout: 60000,
-    }
+      userVerification: 'discouraged',
+    },
   }) as PublicKeyCredential
   console.log(credential)
 
@@ -135,6 +151,9 @@ async function startInitialPair(challenge: PairingChallenge) {
         name: 'Main',
         displayName: 'Main',
       },
+      authenticatorSelection: {
+        userVerification: 'discouraged',
+      },
       pubKeyCredParams: [{ alg: -7, type: 'public-key' }],
       timeout: 60000,
       attestation: 'none',
@@ -145,7 +164,50 @@ async function startInitialPair(challenge: PairingChallenge) {
 
   // Finish
   let credResp = credential.response as AuthenticatorAttestationResponse
-  let resp = await fetchApiJson(`/webauthn/pair/initial/${encodeURIComponent(challenge.id)}/finish`, {
+  await fetchApiJson(`/webauthn/pair/initial/${encodeURIComponent(challenge.id)}/finish`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      keyId: base64.encode(credential.rawId), // pre-encoded id is base64url
+      attestationObject: base64.encode(credResp.attestationObject),
+      clientDataJSON: base64.encode(credResp.clientDataJSON),
+    } as PairFinishWA),
+  })
+}
+
+// Delegatee
+async function startDelegatedPair(challenge: PairingChallenge, showChallenge: (id: string) => void) {
+  // Sign finish response
+  let credential = await navigator.credentials.create({
+    publicKey: {
+      // TODO: wrapper to avoid signing arbitrary data?
+      challenge: base64.decode(challenge.id),
+      rp: {
+        id: 'localhost',
+        name: 'Main',
+      },
+      user: {
+        // Doesn't matter. We use PK as the identifier after registration
+        id: toBytes(crypto.randomUUID()),
+        name: 'Main',
+        displayName: 'Main',
+      },
+      authenticatorSelection: {
+        userVerification: 'discouraged',
+      },
+      pubKeyCredParams: [{ alg: -7, type: 'public-key' }],
+      timeout: 60000,
+      attestation: 'none',
+    }
+  }) as PublicKeyCredential
+  console.log(credential)
+  localStorage.credentialId = base64.encode(credential.rawId) // pre-encoded id is base64url
+
+  // Upload for cross-signing
+  let credResp = credential.response as AuthenticatorAttestationResponse
+  await fetchApiJson(`/pair/delegated/${encodeURIComponent(challenge.id)}/finish_payload`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -157,26 +219,80 @@ async function startInitialPair(challenge: PairingChallenge) {
     } as PairFinishWA),
   })
 
-  return resp
+  // Show QR code
+  showChallenge(challenge.id)
+
+  // Wait for the other side to sign and upload the response
+  while (true) {
+    await new Promise(resolve => setTimeout(resolve, 250))
+    // Finish payload 404 = submitted
+    // TODO: cross-confirmation? So delegatee submits downloaded signature
+    try {
+      await fetchApiJson(`/pair/delegated/${encodeURIComponent(challenge.id)}/finish_payload`)
+    } catch (e) {
+      break
+    }
+  }
 }
 
-// Delegatee
-async function startDelegatedPair(challenge: PairingChallenge) {
-
-}
-
-async function pair() {
+async function pair(showChallenge: (id: string) => void) {
   // Get a challenge
   let challenge: PairingChallenge = await fetchApiJson('/pair/get_challenge', { method: 'POST' })
   if (challenge.isInitial) {
     await startInitialPair(challenge)
   } else {
-    await startDelegatedPair(challenge)
+    await startDelegatedPair(challenge, showChallenge)
   }
+}
+
+async function addDevice() {
+  // Ask for challenge ID
+  let challengeId = prompt('Enter challenge ID:')!
+
+  // Download finish payload
+  let payload: PairFinishWA = await fetchApiJson(`/pair/delegated/${encodeURIComponent(challengeId)}/finish_payload`)
+
+  // Sign it
+  let credential = await navigator.credentials.get({
+    publicKey: {
+      // Wrapper to avoid out-of-context replay
+      challenge: toBytes(JSON.stringify({
+        challengeId,
+        pairFinishPayload: payload,
+        expiresAt: Date.now() + (14 * 24 * 60 * 60 * 1000), // TODO
+        allowedEntities: null,
+      } as PairDelegationWA)),
+      rpId: 'localhost',
+      allowCredentials: [{
+        type: 'public-key',
+        id: base64.decode(getCredentialId()),
+      }],
+      timeout: 60000,
+      userVerification: 'required', // critical action
+    },
+  }) as PublicKeyCredential
+  console.log(credential)
+
+  // Finish (no cross-confirmation for now)
+  let credResp = credential.response as AuthenticatorAssertionResponse
+  await fetchApiJson(`/webauthn/pair/delegated/${encodeURIComponent(challengeId)}/finish`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      delegationKeyId: base64.encode(credential.rawId), // pre-encoded id is base64url
+      signature: base64.encode(credResp.signature),
+      clientDataJSON: base64.encode(credResp.clientDataJSON),
+      authenticatorData: base64.encode(credResp.authenticatorData),
+    } as DelegatedPairFinishWA),
+  })
 }
 
 function App() {
   let { data: entities } = useSWR<Entity[]>('/entity', fetchApiJson)
+  let [isPairing, setIsPairing] = useState(false)
+  let [challengeId, setChallengeId] = useState<string | null>(null)
 
   return <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'start', gap: 16, padding: 16 }}>
     {entities?.map(ent =>
@@ -186,8 +302,32 @@ function App() {
 
     <Divider />
 
-    <Button onClick={pair}>Pair</Button>
-    <Button>Add device</Button>
+    <Button onClick={async () => {
+      setIsPairing(true)
+      await pair(setChallengeId)
+      setIsPairing(false)
+      setChallengeId(null)
+    }}>Pair</Button>
+    <Button onClick={addDevice}>Add device</Button>
+
+    <Divider />
+
+    {isPairing && <>
+      <Text>Pairing...</Text>
+      <Loader />
+
+      <Divider />
+
+      {challengeId && <>
+        <Text>Challenge ID:</Text>
+        <Text size='lg'>{challengeId}</Text>
+        <div style={{ backgroundColor: 'white', padding: 32 }}>
+          <QRCode value={JSON.stringify({
+            challenge: challengeId,
+          })} />
+        </div>
+      </>}
+    </>}
   </div>
 }
 

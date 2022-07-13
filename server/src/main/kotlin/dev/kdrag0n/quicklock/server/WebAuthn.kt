@@ -19,6 +19,7 @@ import io.ktor.utils.io.core.*
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import okio.ByteString.Companion.toByteString
@@ -60,18 +61,132 @@ data class UnlockFinishWA(
     val authenticatorData: String,
 )
 
+@Serializable
+data class DelegatedPairFinishWA(
+    val delegationKeyId: String,
+    val signature: String,
+    val clientDataJSON: String,
+    val authenticatorData: String,
+)
+
+@Serializable
+data class ClientData(
+    val type: String,
+    val challenge: String,
+    val origin: String,
+    val crossOrigin: Boolean,
+)
+
+@Serializable
+data class PairDelegationWA(
+    val challengeId: String,
+    val pairFinishPayload: PairFinishWA,
+    val expiresAt: Long,
+    val allowedEntities: List<String>?,
+)
+
 private val unlockChallenges = HashMap<String, UnlockChallenge>()
 private val authenticators = HashMap<String, AuthenticatorImpl>()
 
 private val logger = LoggerFactory.getLogger("WebAuthn")
 
-fun Application.webAuthnModule() = routing {
-    val manager = WebAuthnManager(
-        listOf(NoneAttestationStatementValidator()),
-        NullCertPathTrustworthinessValidator(),
-        NullSelfAttestationTrustworthinessValidator(),
+private val manager = WebAuthnManager(
+    listOf(NoneAttestationStatementValidator()),
+    NullCertPathTrustworthinessValidator(),
+    NullSelfAttestationTrustworthinessValidator(),
+)
+
+private fun verifyAuth(
+    keyId: String,
+    signature: String,
+    clientDataJSON: String,
+    authenticatorData: String,
+    challengeData: String,
+) {
+    val req = AuthenticationRequest(
+        keyId.decodeBase64(),
+        authenticatorData.decodeBase64(),
+        clientDataJSON.decodeBase64(),
+        signature.decodeBase64(),
+    )
+    val params = AuthenticationParameters(
+        ServerProperty(
+            Origin("http://localhost:3000"),
+            "localhost",
+            RawChallenge(challengeData.encodeToByteArray()),
+            null
+        ),
+        authenticators[keyId]!!,
+        listOf(keyId.decodeBase64()),
+        false,
+        true,
     )
 
+    val data = manager.parse(req)
+    manager.validate(data, params)
+
+    authenticators[keyId]!!.counter = data.authenticatorData!!.signCount
+}
+
+private fun verifyCrossSignature(request: DelegatedPairFinishWA): PairDelegationWA {
+    val (delegationKeyId, signature, clientDataJSON, authenticatorData) = request
+
+    // Trust the data in the challenge - it's only for delegation purposes. We can verify the finish payload
+    // against the copy we have.
+    val clientData = Json.decodeFromString<ClientData>(clientDataJSON.decodeBase64().decodeToString())
+    val challengeData = clientData.challenge.decodeBase64Url().decodeToString()
+    val delegation = Json.decodeFromString<PairDelegationWA>(challengeData)
+
+    verifyAuth(delegationKeyId, signature, clientDataJSON, authenticatorData, challengeData)
+    return delegation
+}
+
+private fun finishPair(
+    request: PairFinishWA,
+    challenge: PairingChallenge,
+    challengeData: ByteArray,
+    delegatedBy: String?,
+    expiresAt: Long = Long.MAX_VALUE,
+    allowedEntities: List<String>? = null,
+) {
+    val (keyId, attestationObject, clientDataJSON) = request
+    val req = RegistrationRequest(attestationObject.decodeBase64(), clientDataJSON.decodeBase64())
+    val data = manager.parse(req)
+
+    val challengeWA = RawChallenge(challengeData)
+    val params = RegistrationParameters(
+        ServerProperty(Origin("http://localhost:3000"), "localhost", challengeWA, null),
+        listOf(
+            PublicKeyCredentialParameters(PublicKeyCredentialType.PUBLIC_KEY, COSEAlgorithmIdentifier.ES256),
+        ),
+        false,
+        true,
+    )
+    manager.validate(data, params)
+
+    val attestation = data.attestationObject!!
+    val authenticator = AuthenticatorImpl(
+        attestation.authenticatorData.attestedCredentialData!!,
+        attestation.attestationStatement,
+        attestation.authenticatorData.signCount,
+    )
+    // TODO
+    authenticators[keyId] = authenticator
+
+    require(challenge.isInitial == (delegatedBy == null))
+    challenge.validate()
+
+    Storage.addDevice(PairedDevice(
+        publicKey = keyId,
+        delegationKey = keyId,
+        // Params
+        expiresAt = expiresAt,
+        delegatedBy = delegatedBy,
+        allowedEntities = allowedEntities,
+    ))
+}
+
+fun Application.webAuthnModule() = routing {
     /*
      * Initial
      *
@@ -98,45 +213,40 @@ fun Application.webAuthnModule() = routing {
         ))
 
         try {
-            val (keyId, attestationObject, clientDataJSON) = call.receive<PairFinishWA>()
-            val req = RegistrationRequest(attestationObject.decodeBase64(), clientDataJSON.decodeBase64())
-            val data = manager.parse(req)
-
-            println("chal ${challengeData}")
-            val challengeWA = RawChallenge(challengeData.encodeToByteArray())
-            val params = RegistrationParameters(
-                ServerProperty(Origin("http://localhost:3000"), "localhost", challengeWA, null),
-                listOf(
-                    PublicKeyCredentialParameters(PublicKeyCredentialType.PUBLIC_KEY, COSEAlgorithmIdentifier.ES256),
-                ),
-                false,
-                true,
-            )
-            manager.validate(data, params)
-
-            val attestation = data.attestationObject!!
-            val authenticator = AuthenticatorImpl(
-                attestation.authenticatorData.attestedCredentialData!!,
-                attestation.attestationStatement,
-                attestation.authenticatorData.signCount,
-            )
-            // TODO
-            authenticators[keyId] = authenticator
-
-            require(challenge.isInitial)
-            challenge.validate()
-
-            Storage.addDevice(PairedDevice(
-                publicKey = keyId,
-                delegationKey = keyId,
-                // Params
-                expiresAt = Long.MAX_VALUE,
-                delegatedBy = null,
-                allowedEntities = null,
-            ))
+            val request = call.receive<PairFinishWA>()
+            finishPair(request, challenge, challengeData.encodeToByteArray(), delegatedBy = null)
             call.respond(EmptyObject)
         } finally {
             pairingChallenges -= challenge.id
+        }
+    }
+
+    /*
+     * Delegated pairing
+     */
+    post("/api/webauthn/pair/delegated/{challengeId}/finish") {
+        val id = call.parameters["challengeId"]!!
+        val challenge = pairingChallenges[id]!!
+
+        try {
+            // Verify cross-signature of the delegatee's entire WebAuthn request
+            val request = call.receive<DelegatedPairFinishWA>()
+            Storage.getDeviceByKey(request.delegationKeyId)
+            val delegation = verifyCrossSignature(request)
+
+            // Finish pair
+            finishPair(
+                delegation.pairFinishPayload,
+                challenge,
+                challengeData = id.decodeBase64(),
+                delegatedBy = request.delegationKeyId,
+                expiresAt = delegation.expiresAt,
+                allowedEntities = delegation.allowedEntities,
+            )
+            call.respond(EmptyObject)
+        } finally {
+            pairingChallenges -= challenge.id
+            finishPayloads -= challenge.id
         }
     }
 
@@ -164,28 +274,7 @@ fun Application.webAuthnModule() = routing {
 
         try {
             val (keyId, signature, clientDataJSON, authenticatorData) = call.receive<UnlockFinishWA>()
-
-            val req = AuthenticationRequest(
-                keyId.decodeBase64(),
-                authenticatorData.decodeBase64(),
-                clientDataJSON.decodeBase64(),
-                signature.decodeBase64(),
-            )
-            val params = AuthenticationParameters(
-                ServerProperty(
-                    Origin("http://localhost:3000"),
-                    "localhost",
-                    RawChallenge(challengeData.encodeToByteArray()),
-                    null
-                ),
-                authenticators[keyId]!!,
-                listOf(keyId.decodeBase64()),
-                false,
-                true,
-            )
-
-            val data = manager.parse(req)
-            manager.validate(data, params)
+            verifyAuth(keyId, signature, clientDataJSON, authenticatorData, challengeData)
 
             // Unlock
             logger.info("Posting HA unlock")
@@ -198,8 +287,6 @@ fun Application.webAuthnModule() = routing {
                 logger.info("Posting HA lock")
                 HomeAssistant.postLock(false, challenge.entityId)
             }
-
-            authenticators[keyId]!!.counter = data.authenticatorData!!.signCount
         } finally {
             unlockChallenges -= challenge.id
         }
