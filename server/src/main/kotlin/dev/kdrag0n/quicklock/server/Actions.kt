@@ -43,7 +43,7 @@ fun Application.actionsModule() = routing {
         // Unlock
         logger.info("Posting HA unlock")
         HomeAssistant.postLock(true, entityId)
-        call.respond(HttpStatusCode.OK)
+        call.respond(EmptyObject)
 
         // Re-lock after delay
         launch {

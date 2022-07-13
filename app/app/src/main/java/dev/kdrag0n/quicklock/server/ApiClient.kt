@@ -121,7 +121,7 @@ class ApiClient @Inject constructor(
             payload = state.finishPayload,
             // HMAC using secret. Proves auth without being vulnerable to MITM.
             hmac = state.finishPayload.toByteArray().toByteString()
-                .hmacSha256(payload.secret.decodeBase64Url().toByteString())
+                .hmacSha256(payload.secret.decodeBase64()!!)
                 .base64(),
         ))
         currentPairState = null

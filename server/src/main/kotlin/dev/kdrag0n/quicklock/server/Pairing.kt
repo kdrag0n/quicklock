@@ -15,19 +15,22 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
-import okio.ByteString.Companion.decodeBase64
 import okio.ByteString.Companion.toByteString
 import java.security.SecureRandom
 import java.util.*
 
 @Serializable
-private data class Challenge(
+data class PairingChallenge(
     val id: String,
     val timestamp: Long,
     val isInitial: Boolean,
-)
+) {
+    fun validate() {
+        require(System.currentTimeMillis() - timestamp <= Config.TIME_GRACE_PERIOD)
+    }
+}
 
-private val challenges = HashMap<String, Challenge>()
+val pairingChallenges = HashMap<String, PairingChallenge>()
 private val finishPayloads = HashMap<String, String>()
 private val delegationSignatures = HashMap<String, SignedDelegation>()
 
@@ -71,14 +74,14 @@ private data class DelegatedPairFinishRequest(
     val signature: SignedDelegation,
 )
 
-private fun generateSecret(): String {
+fun generateSecret(): String {
     val secret = ByteArray(32)
     SecureRandom.getInstanceStrong().nextBytes(secret)
-    return secret.toBase64Url()
+    return secret.toBase64()
 }
 
 @Volatile
-private var initialPairingSecret: String? = null
+var initialPairingSecret: String? = null
 
 fun Application.pairingModule() = routing {
     fun finishPair(
@@ -87,13 +90,13 @@ fun Application.pairingModule() = routing {
         expiresAt: Long = Long.MAX_VALUE,
         allowedEntities: List<String>? = null,
     ) {
-        val challenge = challenges[req.challengeId]!!
+        val challenge = pairingChallenges[req.challengeId]!!
 
         try {
             require(challenge.isInitial == (delegatedBy == null))
 
             // Verify timestamp
-            require(System.currentTimeMillis() - challenge.timestamp <= Config.TIME_GRACE_PERIOD)
+            challenge.validate()
 
             // Verify main attestation and certificate chain
             Attestation.verifyChain(req.mainAttestationChain, challenge.id)
@@ -111,7 +114,7 @@ fun Application.pairingModule() = routing {
             ))
         } finally {
             // Drop challenge
-            challenges -= challenge.id
+            pairingChallenges -= challenge.id
             delegationSignatures -= challenge.id
             finishPayloads -= challenge.id
         }
@@ -131,11 +134,22 @@ fun Application.pairingModule() = routing {
 
         // Open QR page locally (on server)
         withContext(Dispatchers.IO) {
-            println("url ${"open 'http://localhost:3002/api/pair/initial/start/qr?secret=$secret'"}")
-            Runtime.getRuntime().exec("xdg-open 'http://localhost:3002/api/pair/initial/start/qr?secret=$secret'")
+            // URL-encode secret
+            val url = URLBuilder().run {
+                protocol = URLProtocol.HTTP
+                host = "localhost"
+                port = 3002
+                path("api", "pair", "initial", "start", "qr")
+                parameters.append("secret", secret)
+                buildString()
+            }
+
+            println("secret = $secret")
+            println("url = xdg-open '$url'")
+            Runtime.getRuntime().exec("xdg-open '$url'")
         }
 
-        call.respond(HttpStatusCode.OK)
+        call.respond(EmptyObject)
     }
 
     get("/api/pair/initial/start/qr") {
@@ -160,15 +174,15 @@ fun Application.pairingModule() = routing {
         // Verify HMAC
         val secret = initialPairingSecret!!
         val expectedMac = req.payload.toByteArray().toByteString()
-            .hmacSha256(secret.decodeBase64Url().toByteString())
+            .hmacSha256(secret.decodeBase64().toByteString())
             .toByteArray()
-        require(expectedMac cryptoEq req.hmac.decodeBase64()!!.toByteArray())
+        require(expectedMac cryptoEq req.hmac.decodeBase64())
         initialPairingSecret = null
 
         val payload = Json.decodeFromString<PairFinishPayload>(req.payload)
         finishPair(payload, delegatedBy = null)
 
-        call.respond(HttpStatusCode.OK)
+        call.respond(EmptyObject)
     }
 
     /*
@@ -187,7 +201,7 @@ fun Application.pairingModule() = routing {
 
     post("/api/pair/delegated/{challengeId}/finish_payload") {
         val id = call.parameters["challengeId"]!!
-        require(id in challenges)
+        require(id in pairingChallenges)
         require(id !in finishPayloads)
         require(id !in delegationSignatures)
 
@@ -195,7 +209,7 @@ fun Application.pairingModule() = routing {
         // between Moshi and KotlinX serialization
         val payload = call.receiveChannel().readRemaining().readText()
         finishPayloads[id] = payload
-        call.respond(HttpStatusCode.OK)
+        call.respond(EmptyObject)
     }
 
     get("/api/pair/delegated/{challengeId}/signature") {
@@ -210,13 +224,13 @@ fun Application.pairingModule() = routing {
 
     post("/api/pair/delegated/{challengeId}/signature") {
         val id = call.parameters["challengeId"]!!
-        require(id in challenges)
+        require(id in pairingChallenges)
         require(id in finishPayloads)
         require(id !in delegationSignatures)
 
         val signature = call.receive<SignedDelegation>()
         delegationSignatures[id] = signature
-        call.respond(HttpStatusCode.OK)
+        call.respond(EmptyObject)
     }
 
     post("/api/pair/delegated/finish") {
@@ -236,7 +250,7 @@ fun Application.pairingModule() = routing {
             allowedEntities = allowedEntities,
         )
 
-        call.respond(HttpStatusCode.OK)
+        call.respond(EmptyObject)
     }
 
     /*
@@ -245,12 +259,12 @@ fun Application.pairingModule() = routing {
     post("/api/pair/get_challenge") {
         // Generate a new challenge
         val challengeId = generateSecret()
-        val challenge = Challenge(
+        val challenge = PairingChallenge(
             id = challengeId,
             timestamp = System.currentTimeMillis(),
             isInitial = !Storage.hasPairedDevices(),
         )
-        challenges[challengeId] = challenge
+        pairingChallenges[challengeId] = challenge
 
         call.respond(challenge)
     }
