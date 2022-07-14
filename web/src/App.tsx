@@ -224,7 +224,6 @@ async function startDelegatedPair(challenge: PairingChallenge, showChallenge: (i
   while (true) {
     await new Promise(resolve => setTimeout(resolve, 250))
     // Finish payload 404 = submitted
-    // TODO: cross-confirmation? So delegatee submits downloaded signature
     try {
       await fetchApiJson(`/pair/delegated/${encodeURIComponent(challenge.id)}/finish_payload`)
     } catch (e) {
@@ -270,7 +269,7 @@ async function addDevice() {
   }) as PublicKeyCredential
   console.log(credential)
 
-  // Finish (no cross-confirmation for now)
+  // Finish
   let credResp = credential.response as AuthenticatorAssertionResponse
   await fetchApiJson(`/webauthn/pair/delegated/${encodeURIComponent(challengeId)}/finish`, {
     method: 'POST',
