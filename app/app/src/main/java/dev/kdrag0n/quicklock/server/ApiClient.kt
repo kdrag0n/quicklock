@@ -19,7 +19,7 @@ import javax.inject.Singleton
 
 data class PairState(
     val challenge: Challenge,
-    val finishPayload: String,
+    val finishPayloadData: String,
     val delegatedQrPayload: String,
 )
 
@@ -70,16 +70,16 @@ class ApiClient @Inject constructor(
             body ?: throw RequestException(it.errorBody()?.string() ?: "Unknown error")
         }
 
-        val finishPayload = getFinishPayload(challenge)
+        val (payload, data) = getFinishPayload(challenge)
         if (challenge.isInitial) {
             service.startInitialPair()
         } else {
-            service.uploadDelegatedPairFinishPayload(challenge.id, finishPayload)
+            service.uploadDelegatedPairFinishPayload(challenge.id, payload)
         }
 
         currentPairState = PairState(
             challenge,
-            finishPayload,
+            data,
             delegatedQrPayload = delegatedQrAdapter.toJson(DelegatedPairQr(
                 challenge = challenge.id,
             ))
@@ -87,7 +87,7 @@ class ApiClient @Inject constructor(
         return challenge
     }
 
-    private fun getFinishPayload(challenge: Challenge): String {
+    private fun getFinishPayload(challenge: Challenge): Pair<PairFinishPayload, String> {
         val mainKey = crypto.generateKey(challenge.id)
         val delegationKey = crypto.generateKey(challenge.id, isDelegation = true)
         val req = PairFinishPayload(
@@ -97,7 +97,7 @@ class ApiClient @Inject constructor(
             mainAttestationChain = crypto.getAttestationChain(),
             delegationAttestationChain = crypto.getAttestationChain(CryptoService.DELEGATION_ALIAS),
         )
-        return pairFinishAdapter.toJson(req)
+        return req to pairFinishAdapter.toJson(req)
     }
 
     fun getPublicKeyEmoji() =
@@ -118,9 +118,9 @@ class ApiClient @Inject constructor(
         val payload = initialQrAdapter.fromJson(scannedData)!!
         val state = currentPairState ?: return
         service.finishInitialPair(InitialPairFinishRequest(
-            payload = state.finishPayload,
+            payload = state.finishPayloadData,
             // HMAC using secret. Proves auth without being vulnerable to MITM.
-            hmac = state.finishPayload.toByteArray().toByteString()
+            hmac = state.finishPayloadData.toByteArray().toByteString()
                 .hmacSha256(payload.secret.decodeBase64()!!)
                 .base64(),
         ))
@@ -149,10 +149,10 @@ class ApiClient @Inject constructor(
         }
 
         val qr = delegatedQrAdapter.fromJson(payload)!!
-        val reqData = service.getDelegatedPairFinishPayload(qr.challenge).let {
+        val req = service.getDelegatedPairFinishPayload(qr.challenge).let {
             if (it.isSuccessful) it.body() else null
         } ?: throw RequestException("Failed to get delegated pair finish payload")
-        val req = pairFinishAdapter.fromJson(reqData)!!
+        val reqData = pairFinishAdapter.toJson(req)
         require(req.challengeId == qr.challenge)
 
         currentDelegationState = DelegationState(

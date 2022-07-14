@@ -18,12 +18,12 @@ interface ApiService {
     suspend fun finishInitialPair(@Body request: InitialPairFinishRequest): Response<Unit>
 
     @GET("/api/pair/delegated/{challengeId}/finish_payload")
-    suspend fun getDelegatedPairFinishPayload(@Path("challengeId") challengeId: String): Response<String>
+    suspend fun getDelegatedPairFinishPayload(@Path("challengeId") challengeId: String): Response<PairFinishPayload>
 
     @POST("/api/pair/delegated/{challengeId}/finish_payload")
     suspend fun uploadDelegatedPairFinishPayload(
         @Path("challengeId") challengeId: String,
-        @Body payload: String,
+        @Body payload: PairFinishPayload,
     ): Response<Unit>
 
     @POST("/api/pair/delegated/{challengeId}/finish")

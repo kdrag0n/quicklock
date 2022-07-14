@@ -17,7 +17,6 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import okio.ByteString.Companion.toByteString
 import java.security.SecureRandom
-import java.util.*
 
 @Serializable
 data class PairingChallenge(
