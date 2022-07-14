@@ -32,7 +32,6 @@ data class PairingChallenge(
 
 val pairingChallenges = HashMap<String, PairingChallenge>()
 val finishPayloads = HashMap<String, String>()
-private val delegationSignatures = HashMap<String, SignedDelegation>()
 
 @Serializable
 private data class InitialPairQr(
@@ -55,7 +54,7 @@ private data class InitialPairFinishRequest(
 )
 
 @Serializable
-private data class Delegation(
+data class Delegation(
     val finishPayload: String,
     val expiresAt: Long,
     val allowedEntities: List<String>?,
@@ -66,12 +65,6 @@ private data class SignedDelegation(
     val device: String,
     val delegation: String,
     val signature: String,
-)
-
-@Serializable
-private data class DelegatedPairFinishRequest(
-    val payload: String,
-    val signature: SignedDelegation,
 )
 
 fun generateSecret(): String {
@@ -115,7 +108,6 @@ fun Application.pairingModule() = routing {
         } finally {
             // Drop challenge
             pairingChallenges -= challenge.id
-            delegationSignatures -= challenge.id
             finishPayloads -= challenge.id
         }
     }
@@ -203,7 +195,6 @@ fun Application.pairingModule() = routing {
         val id = call.parameters["challengeId"]!!
         require(id in pairingChallenges)
         require(id !in finishPayloads)
-        require(id !in delegationSignatures)
 
         // Raw string, not decoded JSON, to avoid potential formatting differences
         // between Moshi and KotlinX serialization
@@ -212,36 +203,20 @@ fun Application.pairingModule() = routing {
         call.respond(EmptyObject)
     }
 
-    get("/api/pair/delegated/{challengeId}/signature") {
-        val id = call.parameters["challengeId"]!!
-        val signature = delegationSignatures[id]
-        if (signature == null) {
-            call.respond(HttpStatusCode.NotFound)
-        } else {
-            call.respond(signature)
-        }
-    }
-
-    post("/api/pair/delegated/{challengeId}/signature") {
-        val id = call.parameters["challengeId"]!!
-        require(id in pairingChallenges)
-        require(id in finishPayloads)
-        require(id !in delegationSignatures)
-
-        val signature = call.receive<SignedDelegation>()
-        delegationSignatures[id] = signature
-        call.respond(EmptyObject)
-    }
-
-    post("/api/pair/delegated/finish") {
-        val req = call.receive<DelegatedPairFinishRequest>()
-        val (delegatedBy, delegationData, signature) = req.signature
+    post("/api/pair/delegated/{challengeId}/finish") {
+        val req = call.receive<SignedDelegation>()
+        val (delegatedBy, delegationData, signature) = req
         val device = Storage.getDeviceByKey(delegatedBy)
         Crypto.verifySignature(delegationData, device.delegationKey, signature)
 
         val (confirmedPayload, expiresAt, allowedEntities) = Json.decodeFromString<Delegation>(delegationData)
-        require(req.payload == confirmedPayload)
-        val payload = Json.decodeFromString<PairFinishPayload>(req.payload)
+
+        // Prevent delegator from changing request
+        val id = call.parameters["challengeId"]!!
+        val origPayload = finishPayloads[id]!!
+        require(origPayload == confirmedPayload)
+
+        val payload = Json.decodeFromString<PairFinishPayload>(confirmedPayload)
 
         finishPair(
             payload,

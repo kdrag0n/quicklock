@@ -2,7 +2,6 @@ package dev.kdrag0n.quicklock.server
 
 import com.squareup.moshi.Moshi
 import dev.kdrag0n.quicklock.CryptoService
-import dev.kdrag0n.quicklock.decodeBase64Url
 import dev.kdrag0n.quicklock.toBase64
 import dev.kdrag0n.quicklock.util.EventFlow
 import dev.kdrag0n.quicklock.util.toBase1024
@@ -40,7 +39,8 @@ class ApiClient @Inject constructor(
     private val initialQrAdapter = moshi.adapter(InitialPairQr::class.java)
     private val delegatedQrAdapter = moshi.adapter(DelegatedPairQr::class.java)
     private val pairFinishAdapter = moshi.adapter(PairFinishPayload::class.java)
-    private val unlockAdapter = moshi.adapter(UnlockPayload::class.java)
+    private val unlockChallengeAdapter = moshi.adapter(UnlockChallenge::class.java)
+
     var currentPairState: PairState? = null
     var currentDelegationState: DelegationState? = null
 
@@ -65,7 +65,7 @@ class ApiClient @Inject constructor(
         }
 
         // Get a challenge
-        val challenge = service.getChallenge().let {
+        val challenge = service.getPairingChallenge().let {
             val body = if (it.isSuccessful) it.body() else null
             body ?: throw RequestException(it.errorBody()?.string() ?: "Unknown error")
         }
@@ -81,7 +81,7 @@ class ApiClient @Inject constructor(
             challenge,
             finishPayload,
             delegatedQrPayload = delegatedQrAdapter.toJson(DelegatedPairQr(
-                challengeId = challenge.id,
+                challenge = challenge.id,
             ))
         )
         return challenge
@@ -129,23 +129,18 @@ class ApiClient @Inject constructor(
         pairFinishedFlow.emit()
     }
 
-    suspend fun tryFinishDelegatedPair() {
-        val state = currentPairState ?: return
-        val resp = service.getDelegatedPairSignature(state.challenge.id)
-        if (resp.isSuccessful) {
-            finishDelegatedPair(resp.body() ?: return)
+    suspend fun checkDelegatedPairStatus(): Boolean {
+        val state = currentPairState ?: return true
+        // 404 = challenge gone, pairing done
+        val resp = service.getDelegatedPairFinishPayload(state.challenge.id)
+
+        val finished = resp.code() == 404
+        return if (finished) {
+            currentPairState = null
+            true
+        } else {
+            false
         }
-    }
-
-    private suspend fun finishDelegatedPair(signature: SignedDelegation) {
-        val state = currentPairState ?: return
-        service.finishDelegatedPair(DelegatedPairFinishRequest(
-            payload = state.finishPayload,
-            signature = signature,
-        ))
-        currentPairState = null
-
-        pairFinishedFlow.emit()
     }
 
     suspend fun fetchDelegation(payload: String) {
@@ -154,11 +149,11 @@ class ApiClient @Inject constructor(
         }
 
         val qr = delegatedQrAdapter.fromJson(payload)!!
-        val reqData = service.getDelegatedPairFinishPayload(qr.challengeId).let {
+        val reqData = service.getDelegatedPairFinishPayload(qr.challenge).let {
             if (it.isSuccessful) it.body() else null
         } ?: throw RequestException("Failed to get delegated pair finish payload")
         val req = pairFinishAdapter.fromJson(reqData)!!
-        require(req.challengeId == qr.challengeId)
+        require(req.challengeId == qr.challenge)
 
         currentDelegationState = DelegationState(
             finishPayload = req,
@@ -180,29 +175,28 @@ class ApiClient @Inject constructor(
         )
         val delegationData = delegationAdapter.toJson(delegation)
 
-        val signature = SignedDelegation(
+        val signed = SignedDelegation(
             device = crypto.publicKeyEncoded,
             delegation = delegationData,
             signature = crypto.finishSignature(sig, delegationData),
         )
-        service.uploadDelegatedPairSignature(req.challengeId, signature)
+        service.finishDelegatedPair(req.challengeId, signed)
         currentDelegationState = null
     }
 
     suspend fun unlock(entityId: String) {
-        val payload = UnlockPayload(
-            entityId = entityId,
+        val challenge = service.startUnlock(UnlockStartRequest(entityId)).let {
+            val body = if (it.isSuccessful) it.body() else null
+            body ?: throw RequestException(it.errorBody()?.string() ?: "Unknown error")
+        }
+        require(challenge.entityId == entityId)
+
+        val challengeData = unlockChallengeAdapter.toJson(challenge)
+        val request = UnlockFinishRequest(
             publicKey = crypto.publicKeyEncoded,
-            timestamp = System.currentTimeMillis(),
+            signature = crypto.signPayload(challengeData),
         )
-
-        val payloadJson = unlockAdapter.toJson(payload)
-        val request = UnlockRequest(
-            payload = payloadJson,
-            signature = crypto.signPayload(payloadJson),
-        )
-
-        service.unlock(request)
+        service.finishUnlock(challenge.id, request)
     }
 }
 

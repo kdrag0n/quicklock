@@ -33,7 +33,7 @@ interface InitialPairFinishPayloadWA {
   challengeMac: string // to prove knowledge of secret
 }
 
-interface UnlockStartWA {
+interface UnlockStartRequest {
   entityId: string
 }
 
@@ -50,9 +50,8 @@ interface UnlockFinishWA {
   authenticatorData: string
 }
 
-interface PairDelegationWA {
-  challengeId: string
-  pairFinishPayload: PairFinishWA
+interface Delegation {
+  finishPayload: string
   expiresAt: number
   allowedEntities: string[] | null
 }
@@ -74,18 +73,17 @@ function getCredentialId() {
 
 async function unlock(entity: Entity) {
   // Get challenge with info
-  let challenge = await fetchApiJson('/webauthn/unlock/start', {
+  let challenge = await fetchApiJson('/unlock/start', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({ 
       entityId: entity.id, 
-    } as UnlockStartWA),
+    } as UnlockStartRequest),
   })
 
   // Sign
-  console.log('get cred')
   let credential = await navigator.credentials.get({
     publicKey: {
       challenge: toBytes(JSON.stringify(challenge)),
@@ -257,11 +255,10 @@ async function addDevice() {
     publicKey: {
       // Wrapper to avoid out-of-context replay
       challenge: toBytes(JSON.stringify({
-        challengeId,
-        pairFinishPayload: payload,
+        finishPayload: JSON.stringify(payload),
         expiresAt: Date.now() + (14 * 24 * 60 * 60 * 1000), // TODO
         allowedEntities: null,
-      } as PairDelegationWA)),
+      } as Delegation)),
       rpId: 'localhost',
       allowCredentials: [{
         type: 'public-key',

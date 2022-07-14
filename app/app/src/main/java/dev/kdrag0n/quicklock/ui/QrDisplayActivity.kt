@@ -1,14 +1,10 @@
 package dev.kdrag0n.quicklock.ui
 
 import android.os.Bundle
-import androidx.activity.ComponentActivity
-import androidx.activity.compose.setContent
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.*
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -40,14 +36,10 @@ class QrDisplayActivity : AppCompatActivity() {
         }
 
         launchStarted {
-            model.pairFinishedFlow.launchCollect(this) {
-                finish()
-            }
-
-            launch {
-                while (true) {
-                    delay(250)
-                    model.tryFinishDelegatedPair()
+            while (true) {
+                delay(250)
+                if (model.checkPairFinished()) {
+                    finish()
                 }
             }
         }

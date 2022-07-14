@@ -26,23 +26,23 @@ interface ApiService {
         @Body payload: String,
     ): Response<Unit>
 
-    @GET("/api/pair/delegated/{challengeId}/signature")
-    suspend fun getDelegatedPairSignature(@Path("challengeId") challengeId: String): Response<SignedDelegation>
-
-    @POST("/api/pair/delegated/{challengeId}/signature")
-    suspend fun uploadDelegatedPairSignature(
+    @POST("/api/pair/delegated/{challengeId}/finish")
+    suspend fun finishDelegatedPair(
         @Path("challengeId") challengeId: String,
-        @Body signature: SignedDelegation,
+        @Body request: SignedDelegation,
     ): Response<Unit>
 
-    @POST("/api/pair/delegated/finish")
-    suspend fun finishDelegatedPair(@Body request: DelegatedPairFinishRequest): Response<Unit>
-
     @POST("/api/pair/get_challenge")
-    suspend fun getChallenge(): Response<Challenge>
+    suspend fun getPairingChallenge(): Response<Challenge>
 
-    @POST("/api/unlock")
-    suspend fun unlock(@Body request: UnlockRequest): Response<Unit>
+    @POST("/api/unlock/start")
+    suspend fun startUnlock(@Body request: UnlockStartRequest): Response<UnlockChallenge>
+
+    @POST("/api/unlock/{challengeId}/finish")
+    suspend fun finishUnlock(
+        @Path("challengeId") challengeId: String,
+        @Body request: UnlockFinishRequest,
+    ): Response<Unit>
 }
 
 @JsonClass(generateAdapter = true)
@@ -66,7 +66,7 @@ data class InitialPairQr(
 
 @JsonClass(generateAdapter = true)
 data class DelegatedPairQr(
-    val challengeId: String,
+    val challenge: String,
 )
 
 @JsonClass(generateAdapter = true)
@@ -99,20 +99,20 @@ data class InitialPairFinishRequest(
 )
 
 @JsonClass(generateAdapter = true)
-data class DelegatedPairFinishRequest(
-    val payload: String,
-    val signature: SignedDelegation,
-)
-
-@JsonClass(generateAdapter = true)
-data class UnlockPayload(
-    val entityId: String,
-    val publicKey: String,
+data class UnlockChallenge(
+    val id: String,
     val timestamp: Long,
+    val entityId: String,
 )
 
 @JsonClass(generateAdapter = true)
-data class UnlockRequest(
-    val payload: String,
+data class UnlockStartRequest(
+    val entityId: String,
+)
+
+@JsonClass(generateAdapter = true)
+data class UnlockFinishRequest(
+    // Challenge ID is in URL
+    val publicKey: String,
     val signature: String,
 )

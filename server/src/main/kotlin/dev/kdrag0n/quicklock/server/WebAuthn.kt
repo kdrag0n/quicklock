@@ -14,8 +14,6 @@ import io.ktor.server.application.*
 import io.ktor.server.request.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
-import io.ktor.utils.io.*
-import io.ktor.utils.io.core.*
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
@@ -24,21 +22,7 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import okio.ByteString.Companion.toByteString
 import org.slf4j.LoggerFactory
-import java.io.ByteArrayOutputStream
-import java.io.ObjectOutputStream
 import java.util.*
-
-@Serializable
-data class UnlockStartWA(
-    val entityId: String,
-)
-
-@Serializable
-data class UnlockChallenge(
-    val id: String,
-    val timestamp: Long,
-    val entityId: String,
-)
 
 @Serializable
 data class InitialPairFinishPayloadWA(
@@ -77,15 +61,6 @@ data class ClientData(
     val crossOrigin: Boolean,
 )
 
-@Serializable
-data class PairDelegationWA(
-    val challengeId: String,
-    val pairFinishPayload: PairFinishWA,
-    val expiresAt: Long,
-    val allowedEntities: List<String>?,
-)
-
-private val unlockChallenges = HashMap<String, UnlockChallenge>()
 private val authenticators = HashMap<String, AuthenticatorImpl>()
 
 private val logger = LoggerFactory.getLogger("WebAuthn")
@@ -128,14 +103,14 @@ private fun verifyAuth(
     authenticators[keyId]!!.counter = data.authenticatorData!!.signCount
 }
 
-private fun verifyCrossSignature(request: DelegatedPairFinishWA): PairDelegationWA {
+private fun verifyCrossSignature(request: DelegatedPairFinishWA): Delegation {
     val (delegationKeyId, signature, clientDataJSON, authenticatorData) = request
 
     // Trust the data in the challenge - it's only for delegation purposes. We can verify the finish payload
     // against the copy we have.
     val clientData = Json.decodeFromString<ClientData>(clientDataJSON.decodeBase64().decodeToString())
     val challengeData = clientData.challenge.decodeBase64Url().decodeToString()
-    val delegation = Json.decodeFromString<PairDelegationWA>(challengeData)
+    val delegation = Json.decodeFromString<Delegation>(challengeData)
 
     verifyAuth(delegationKeyId, signature, clientDataJSON, authenticatorData, challengeData)
     return delegation
@@ -234,9 +209,13 @@ fun Application.webAuthnModule() = routing {
             Storage.getDeviceByKey(request.delegationKeyId)
             val delegation = verifyCrossSignature(request)
 
+            // Prevent delegator from changing request
+            val reqData = finishPayloads[id]!!
+            require(delegation.finishPayload == reqData)
+
             // Finish pair
             finishPair(
-                delegation.pairFinishPayload,
+                Json.decodeFromString(reqData),
                 challenge,
                 challengeData = id.decodeBase64(),
                 delegatedBy = request.delegationKeyId,
@@ -253,19 +232,6 @@ fun Application.webAuthnModule() = routing {
     /*
      * Unlock
      */
-    post("/api/webauthn/unlock/start") {
-        val (entityId) = call.receive<UnlockStartWA>()
-        val entity = Config.HA_ENTITIES[entityId]!!
-
-        val challenge = UnlockChallenge(
-            id = generateSecret(),
-            timestamp = System.currentTimeMillis(),
-            entityId = entity.id,
-        )
-        unlockChallenges[challenge.id] = challenge
-        call.respond(challenge)
-    }
-
     post("/api/webauthn/unlock/{challengeId}/finish") {
         val id = call.parameters["challengeId"]!!
         val challenge = unlockChallenges[id]!!
