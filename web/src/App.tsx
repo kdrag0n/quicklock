@@ -28,9 +28,8 @@ interface PairingChallenge {
   isInitial: boolean
 }
 
-interface InitialPairFinishPayloadWA {
-  challengeId: string
-  challengeMac: string // to prove knowledge of secret
+interface PairFinishChallengeWA {
+  pairChallengeId: string
 }
 
 interface UnlockStartRequest {
@@ -41,6 +40,11 @@ interface PairFinishWA {
   keyId: string
   attestationObject: string
   clientDataJSON: string
+}
+
+interface InitialPairFinishRequest {
+  finishPayload: string
+  mac: string
 }
 
 interface UnlockFinishWA {
@@ -125,20 +129,13 @@ async function startInitialPair(challenge: PairingChallenge) {
   if (!secretB64) return
   let secretBytes = base64.decode(secretB64)
 
-  // HMAC to prove knowledge of secret
-  let key = await crypto.subtle.importKey('raw', secretBytes, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'])
-  let mac = await crypto.subtle.sign('HMAC', key, toBytes(challenge.id))
-
-  // Use WebAuthn as an envelope for the challenge ID and MAC
-  let authPayload: InitialPairFinishPayloadWA = {
-    challengeId: challenge.id,
-    challengeMac: base64.encode(mac),
-  }
-
   // Sign response
   let credential = await navigator.credentials.create({
     publicKey: {
-      challenge: toBytes(JSON.stringify(authPayload)),
+      // Use WebAuthn as an envelope for the challenge ID
+      challenge: toBytes(JSON.stringify({
+        pairChallengeId: challenge.id,
+      } as PairFinishChallengeWA)),
       rp: {
         id: 'localhost',
         name: 'Main',
@@ -160,18 +157,28 @@ async function startInitialPair(challenge: PairingChallenge) {
   console.log(credential)
   localStorage.credentialId = base64.encode(credential.rawId) // pre-encoded id is base64url
 
-  // Finish
+  // Prepare finish request
   let credResp = credential.response as AuthenticatorAttestationResponse
+  let finishPayload = JSON.stringify({
+    keyId: base64.encode(credential.rawId), // pre-encoded id is base64url
+    attestationObject: base64.encode(credResp.attestationObject),
+    clientDataJSON: base64.encode(credResp.clientDataJSON),
+  } as PairFinishWA)
+
+  // HMAC to prove knowledge of secret
+  let key = await crypto.subtle.importKey('raw', secretBytes, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'])
+  let mac = await crypto.subtle.sign('HMAC', key, toBytes(finishPayload))
+
+  // Finish
   await fetchApiJson(`/webauthn/pair/initial/${encodeURIComponent(challenge.id)}/finish`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      keyId: base64.encode(credential.rawId), // pre-encoded id is base64url
-      attestationObject: base64.encode(credResp.attestationObject),
-      clientDataJSON: base64.encode(credResp.clientDataJSON),
-    } as PairFinishWA),
+      finishPayload,
+      mac: base64.encode(mac),
+    } as InitialPairFinishRequest),
   })
 }
 
@@ -180,8 +187,10 @@ async function startDelegatedPair(challenge: PairingChallenge, showChallenge: (i
   // Sign finish response
   let credential = await navigator.credentials.create({
     publicKey: {
-      // TODO: wrapper to avoid signing arbitrary data?
-      challenge: base64.decode(challenge.id),
+      // Use WebAuthn as an envelope for the challenge ID
+      challenge: toBytes(JSON.stringify({
+        pairChallengeId: challenge.id,
+      } as PairFinishChallengeWA)),
       rp: {
         id: 'localhost',
         name: 'Main',

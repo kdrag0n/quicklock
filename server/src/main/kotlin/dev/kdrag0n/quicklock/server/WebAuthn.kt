@@ -24,9 +24,8 @@ import okio.ByteString.Companion.toByteString
 import org.slf4j.LoggerFactory
 
 @Serializable
-data class InitialPairFinishPayloadWA(
-    val challengeId: String,
-    val challengeMac: String,
+data class PairFinishChallengeWA(
+    val pairChallengeId: String,
 )
 
 @Serializable
@@ -178,22 +177,23 @@ fun Application.webAuthnModule() = routing {
     post("/api/webauthn/pair/initial/{challengeId}/finish") {
         val id = call.parameters["challengeId"]!!
         val challenge = pairingChallenges[id]!!
+        val request = call.receive<InitialPairFinishRequest>()
 
-        // HMAC
+        // Verify HMAC (secret knowledge)
         val secret = initialPairingSecret!!
-        val mac = challenge.id.encodeToByteArray().toByteString()
-            .hmacSha256(secret.decodeBase64().toByteString())
-            .base64()
         initialPairingSecret = null
+        val mac = request.finishPayload.encodeToByteArray().toByteString()
+            .hmacSha256(secret.decodeBase64().toByteString())
+            .toByteArray()
+        require(mac cryptoEq request.mac.decodeBase64())
 
-        val challengeData = Json.encodeToString(InitialPairFinishPayloadWA(
-            challengeId = challenge.id,
-            challengeMac = mac,
+        val challengeData = Json.encodeToString(PairFinishChallengeWA(
+            pairChallengeId = challenge.id,
         ))
 
         try {
-            val request = call.receive<PairFinishWA>()
-            finishPair(request, challenge, challengeData.encodeToByteArray(), delegatedBy = null)
+            val finishRequest = Json.decodeFromString<PairFinishWA>(request.finishPayload)
+            finishPair(finishRequest, challenge, challengeData.encodeToByteArray(), delegatedBy = null)
             call.respond(EmptyObject)
         } finally {
             pairingChallenges -= challenge.id
@@ -217,10 +217,13 @@ fun Application.webAuthnModule() = routing {
             require(delegation.finishPayload == reqData)
 
             // Finish pair
+            val credChallenge = PairFinishChallengeWA(
+                pairChallengeId = challenge.id,
+            )
             finishPair(
                 Json.decodeFromString(reqData),
                 challenge,
-                challengeData = id.decodeBase64(),
+                challengeData = Json.encodeToString(credChallenge).encodeToByteArray(),
                 delegatedBy = request.delegationKeyId,
                 expiresAt = delegation.expiresAt,
                 allowedEntities = delegation.allowedEntities,

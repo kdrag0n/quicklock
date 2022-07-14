@@ -47,9 +47,9 @@ private data class PairFinishPayload(
 )
 
 @Serializable
-private data class InitialPairFinishRequest(
-    val payload: String,
-    val hmac: String,
+data class InitialPairFinishRequest(
+    val finishPayload: String,
+    val mac: String,
 )
 
 @Serializable
@@ -164,13 +164,13 @@ fun Application.pairingModule() = routing {
 
         // Verify HMAC
         val secret = initialPairingSecret!!
-        val expectedMac = req.payload.serializeToByteArray().toByteString()
+        val expectedMac = req.finishPayload.serializeToByteArray().toByteString()
             .hmacSha256(secret.decodeBase64().toByteString())
             .toByteArray()
-        require(expectedMac cryptoEq req.hmac.decodeBase64())
+        require(expectedMac cryptoEq req.mac.decodeBase64())
         initialPairingSecret = null
 
-        val payload = Json.decodeFromString<PairFinishPayload>(req.payload)
+        val payload = Json.decodeFromString<PairFinishPayload>(req.finishPayload)
         finishPair(payload, delegatedBy = null)
 
         call.respond(EmptyObject)
@@ -244,7 +244,7 @@ fun Application.pairingModule() = routing {
     }
 }
 
-private infix fun ByteArray.cryptoEq(other: ByteArray): Boolean {
+infix fun ByteArray.cryptoEq(other: ByteArray): Boolean {
     var n = 0
     for (i in indices) {
         n = n or (this[i].toInt() xor other[i].toInt())
