@@ -22,7 +22,6 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import okio.ByteString.Companion.toByteString
 import org.slf4j.LoggerFactory
-import java.util.*
 
 @Serializable
 data class InitialPairFinishPayloadWA(
@@ -61,8 +60,6 @@ data class ClientData(
     val crossOrigin: Boolean,
 )
 
-private val authenticators = HashMap<String, AuthenticatorImpl>()
-
 private val logger = LoggerFactory.getLogger("WebAuthn")
 
 private val manager = WebAuthnManager(
@@ -78,6 +75,9 @@ private fun verifyAuth(
     authenticatorData: String,
     challengeData: String,
 ) {
+    val device = Storage.getDeviceByKey(keyId)
+    val authenticator = device.loadAuthenticator()!!
+
     val req = AuthenticationRequest(
         keyId.decodeBase64(),
         authenticatorData.decodeBase64(),
@@ -91,7 +91,7 @@ private fun verifyAuth(
             RawChallenge(challengeData.encodeToByteArray()),
             null
         ),
-        authenticators[keyId]!!,
+        authenticator,
         listOf(keyId.decodeBase64()),
         false,
         true,
@@ -100,7 +100,10 @@ private fun verifyAuth(
     val data = manager.parse(req)
     manager.validate(data, params)
 
-    authenticators[keyId]!!.counter = data.authenticatorData!!.signCount
+    authenticator.counter = data.authenticatorData!!.signCount
+    Storage.updateDevice(device.copy(
+        serializedAuthenticator = authenticator.serializeToByteArray().toBase64(),
+    ))
 }
 
 private fun verifyCrossSignature(request: DelegatedPairFinishWA): Delegation {
@@ -145,8 +148,6 @@ private fun finishPair(
         attestation.attestationStatement,
         attestation.authenticatorData.signCount,
     )
-    // TODO
-    authenticators[keyId] = authenticator
 
     require(challenge.isInitial == (delegatedBy == null))
     challenge.validate()
@@ -158,6 +159,9 @@ private fun finishPair(
         expiresAt = expiresAt,
         delegatedBy = delegatedBy,
         allowedEntities = allowedEntities,
+
+        // State
+        serializedAuthenticator = authenticator.serializeToByteArray().toBase64(),
     ))
 }
 
@@ -206,7 +210,6 @@ fun Application.webAuthnModule() = routing {
         try {
             // Verify cross-signature of the delegatee's entire WebAuthn request
             val request = call.receive<DelegatedPairFinishWA>()
-            Storage.getDeviceByKey(request.delegationKeyId)
             val delegation = verifyCrossSignature(request)
 
             // Prevent delegator from changing request

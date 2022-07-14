@@ -2,7 +2,6 @@ package dev.kdrag0n.quicklock.server
 
 import java.io.ByteArrayInputStream
 import java.security.cert.CertificateFactory
-import java.security.cert.X509Certificate
 
 object Certificates {
     val GOOGLE_ROOTS = listOf(
@@ -99,6 +98,6 @@ mD/vFDkzF+wm7cyWpQpCVQ==
 -----END CERTIFICATE-----""",
     ).map {
         val factory = CertificateFactory.getInstance("X.509")
-        factory.generateCertificate(ByteArrayInputStream(it.toByteArray()))
+        factory.generateCertificate(ByteArrayInputStream(it.serializeToByteArray()))
     }
 }

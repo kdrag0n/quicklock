@@ -164,7 +164,7 @@ fun Application.pairingModule() = routing {
 
         // Verify HMAC
         val secret = initialPairingSecret!!
-        val expectedMac = req.payload.toByteArray().toByteString()
+        val expectedMac = req.payload.serializeToByteArray().toByteString()
             .hmacSha256(secret.decodeBase64().toByteString())
             .toByteArray()
         require(expectedMac cryptoEq req.hmac.decodeBase64())

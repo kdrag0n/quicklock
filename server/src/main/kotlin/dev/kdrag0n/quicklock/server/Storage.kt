@@ -1,5 +1,6 @@
 package dev.kdrag0n.quicklock.server
 
+import com.webauthn4j.authenticator.AuthenticatorImpl
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
@@ -19,7 +20,14 @@ data class PairedDevice(
     val delegatedBy: String?,
     // Null for all
     val allowedEntities: List<String>?,
-)
+
+    // WebAuthn Authenticator object
+    val serializedAuthenticator: String? = null,
+) {
+    fun loadAuthenticator() = serializedAuthenticator?.let {
+        it.decodeBase64().decodeSerializable() as AuthenticatorImpl
+    }
+}
 
 object Storage {
     private val devices = loadDevices().toMutableMap()
@@ -43,6 +51,12 @@ object Storage {
             return
         }
 
+        devices[device.publicKey] = device
+        writeDevices()
+    }
+
+    fun updateDevice(device: PairedDevice) {
+        require(device.publicKey in devices)
         devices[device.publicKey] = device
         writeDevices()
     }
