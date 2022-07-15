@@ -1,10 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import logo from './logo.svg';
 import './App.css';
-import { Button, Divider, Loader, Text } from '@mantine/core';
+import { Button, Checkbox, Chip, Chips, Divider, Loader, Modal, Text } from '@mantine/core';
 import useSWR from 'swr';
 import * as base64 from 'base64-arraybuffer'
 import QRCode from 'react-qr-code'
+import { DelegatedPairFinishWA, Delegation, Entity, InitialPairFinishRequest, PairFinishChallengeWA, PairFinishWA, PairingChallenge, UnlockFinishWA, UnlockStartRequest } from './api-types';
+import { extractFinishPublicKey, publicKeyToEmoji } from './webauthn';
+import { DatePicker } from '@mantine/dates';
 
 const API_BASE_URL = 'http://localhost:3002/api'
 
@@ -16,59 +19,26 @@ async function fetchApiJson(path: string, init?: RequestInit) {
   return await resp.json()
 }
 
-interface Entity {
-  id: string
-  name: string
-  haEntity: string
+export interface DelegatedPairState {
+  challengeId: string
+  keyEmoji: string
 }
 
-interface PairingChallenge {
-  id: string
-  timestamp: number
-  isInitial: boolean
+export interface DelegationState {
+  challengeId: string
+  keyEmoji: string
+  finishRequest: PairFinishWA
 }
 
-interface PairFinishChallengeWA {
-  pairChallengeId: string
-}
-
-interface UnlockStartRequest {
-  entityId: string
-}
-
-interface PairFinishWA {
-  keyId: string
-  attestationObject: string
-  clientDataJSON: string
-}
-
-interface InitialPairFinishRequest {
-  finishPayload: string
-  mac: string
-}
-
-interface UnlockFinishWA {
-  keyId: string
-  signature: string
-  clientDataJSON: string
-  authenticatorData: string
-}
-
-interface Delegation {
-  finishPayload: string
-  expiresAt: number
-  allowedEntities: string[] | null
-}
-
-interface DelegatedPairFinishWA {
-  delegationKeyId: string
-  signature: string
-  clientDataJSON: string
-  authenticatorData: string
-}
+const encoder = new TextEncoder()
+const decoder = new TextDecoder()
 
 function toBytes(str: string) {
-  return Uint8Array.from(str, c => c.charCodeAt(0))
+  return encoder.encode(str)
+}
+
+function fromBytes(data: ArrayBuffer) {
+  return decoder.decode(data)
 }
 
 function getCredentialId() {
@@ -183,7 +153,10 @@ async function startInitialPair(challenge: PairingChallenge) {
 }
 
 // Delegatee
-async function startDelegatedPair(challenge: PairingChallenge, showChallenge: (id: string) => void) {
+async function startDelegatedPair(
+  challenge: PairingChallenge,
+  setDelegatedState: (state: DelegatedPairState) => void,
+) {
   // Sign finish response
   let credential = await navigator.credentials.create({
     publicKey: {
@@ -214,20 +187,26 @@ async function startDelegatedPair(challenge: PairingChallenge, showChallenge: (i
 
   // Upload for cross-signing
   let credResp = credential.response as AuthenticatorAttestationResponse
+  let finishRequest: PairFinishWA = {
+    keyId: base64.encode(credential.rawId), // pre-encoded id is base64url
+    attestationObject: base64.encode(credResp.attestationObject),
+    clientDataJSON: base64.encode(credResp.clientDataJSON),
+  }
   await fetchApiJson(`/pair/delegated/${encodeURIComponent(challenge.id)}/finish_payload`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({
-      keyId: base64.encode(credential.rawId), // pre-encoded id is base64url
-      attestationObject: base64.encode(credResp.attestationObject),
-      clientDataJSON: base64.encode(credResp.clientDataJSON),
-    } as PairFinishWA),
+    body: JSON.stringify(finishRequest),
   })
 
-  // Show QR code
-  showChallenge(challenge.id)
+  // Show QR code and emoji
+  let publicKey = await extractFinishPublicKey(finishRequest)
+  let keyEmoji = await publicKeyToEmoji(publicKey)
+  setDelegatedState({
+    challengeId: challenge.id,
+    keyEmoji,
+  })
 
   // Wait for the other side to sign and upload the response
   while (true) {
@@ -241,31 +220,47 @@ async function startDelegatedPair(challenge: PairingChallenge, showChallenge: (i
   }
 }
 
-async function pair(showChallenge: (id: string) => void) {
+async function pair(setDelegatedState: (state: DelegatedPairState) => void) {
   // Get a challenge
   let challenge: PairingChallenge = await fetchApiJson('/pair/get_challenge', { method: 'POST' })
   if (challenge.isInitial) {
     await startInitialPair(challenge)
   } else {
-    await startDelegatedPair(challenge, showChallenge)
+    await startDelegatedPair(challenge, setDelegatedState)
   }
 }
 
-async function addDevice() {
+async function startCrossSign(setDelegationState: (state: DelegationState) => void) {
   // Ask for challenge ID
   let challengeId = prompt('Enter challenge ID:')!
 
   // Download finish payload
-  let payload: PairFinishWA = await fetchApiJson(`/pair/delegated/${encodeURIComponent(challengeId)}/finish_payload`)
+  let finishRequest: PairFinishWA = await fetchApiJson(`/pair/delegated/${encodeURIComponent(challengeId)}/finish_payload`)
 
+  let publicKey = await extractFinishPublicKey(finishRequest)
+  let keyEmoji = await publicKeyToEmoji(publicKey)
+
+  setDelegationState({
+    challengeId,
+    finishRequest,
+    keyEmoji,
+  })
+}
+
+async function finishCrossSign(
+  { challengeId, finishRequest }: DelegationState,
+  expiresAt: number,
+  allowedEntities: string[] | null,
+  setDelegationState: (state: DelegationState | null) => void,
+) {
   // Sign it
   let credential = await navigator.credentials.get({
     publicKey: {
       // Wrapper to avoid out-of-context replay
       challenge: toBytes(JSON.stringify({
-        finishPayload: JSON.stringify(payload),
-        expiresAt: Date.now() + (14 * 24 * 60 * 60 * 1000), // TODO
-        allowedEntities: null,
+        finishPayload: JSON.stringify(finishRequest),
+        expiresAt,
+        allowedEntities,
       } as Delegation)),
       rpId: 'localhost',
       allowCredentials: [{
@@ -292,12 +287,66 @@ async function addDevice() {
       authenticatorData: base64.encode(credResp.authenticatorData),
     } as DelegatedPairFinishWA),
   })
+
+  setDelegationState(null)
+}
+
+function DelegationConfirmContent({ state, setState, entities }: {
+  state: DelegationState
+  entities: Entity[]
+  setState: (state: DelegationState | null) => void
+}) {
+  let [useExpiry, setUseExpiry] = useState(false)
+  let [limitEntities, setLimitEntities] = useState(false)
+  let [expiresAt, setExpiresAt] = useState(new Date(Date.now() + (7 * 24 * 60 * 60 * 1000)))
+  let [allowedEntities, setAllowedEntities] = useState<string[]>(entities.map(e => e.id))
+
+  return <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'start' }}>
+    <Text>Make sure these emoji are the same on your new device.</Text>
+    <Text style={{ fontSize: 64, marginBottom: 16 }}>{state.keyEmoji}</Text>
+
+    <div style={{ marginBottom: 16 }}>
+      <Checkbox
+        label='Limit access time'
+        checked={useExpiry}
+        onChange={event => setUseExpiry(event.currentTarget.checked)} />
+
+      {useExpiry && <DatePicker
+        value={expiresAt}
+        onChange={date => setExpiresAt(date!)}
+        label='Allow access until'
+        clearable={false}
+        minDate={new Date()}
+      />}
+    </div>
+
+    <div style={{ marginBottom: 16 }}>
+      <Checkbox
+        label='Limit locks'
+        checked={limitEntities}
+        onChange={event => setLimitEntities(event.currentTarget.checked)} />
+        
+        {limitEntities && <Chips multiple value={allowedEntities} onChange={setAllowedEntities}>
+          {entities.map(e => <Chip key={e.id} value={e.id}>{e.name}</Chip>)}
+        </Chips>}
+    </div>
+
+    <Button onClick={() => {
+      finishCrossSign(
+        state,
+        useExpiry ? expiresAt.getTime() : 8640000000000000,
+        limitEntities ? allowedEntities : null,
+        setState,
+      )
+    }}>Confirm</Button>
+  </div>
 }
 
 function App() {
   let { data: entities } = useSWR<Entity[]>('/entity', fetchApiJson)
   let [isPairing, setIsPairing] = useState(false)
-  let [challengeId, setChallengeId] = useState<string | null>(null)
+  let [delegatedState, setDelegatedState] = useState<DelegatedPairState | null>(null)
+  let [delegationState, setDelegationState] = useState<DelegationState | null>(null)
 
   return <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'start', gap: 16, padding: 16 }}>
     {entities?.map(ent =>
@@ -309,11 +358,11 @@ function App() {
 
     <Button onClick={async () => {
       setIsPairing(true)
-      await pair(setChallengeId)
+      await pair(setDelegatedState)
       setIsPairing(false)
-      setChallengeId(null)
+      setDelegatedState(null)
     }}>Pair</Button>
-    <Button onClick={addDevice}>Add device</Button>
+    <Button onClick={() => startCrossSign(setDelegationState)}>Add device</Button>
 
     <Divider />
 
@@ -323,16 +372,31 @@ function App() {
 
       <Divider />
 
-      {challengeId && <>
+      {delegatedState && <>
         <Text>Challenge ID:</Text>
-        <Text size='lg'>{challengeId}</Text>
+        <Text size='lg'>{delegatedState.challengeId}</Text>
+        
         <div style={{ backgroundColor: 'white', padding: 32 }}>
           <QRCode value={JSON.stringify({
-            challenge: challengeId,
+            challenge: delegatedState.challengeId,
           })} />
         </div>
+        
+        <Text>Make sure these emoji are the same on your old device.</Text>
+        <Text style={{ fontSize: 64 }}>{delegatedState.keyEmoji}</Text>
       </>}
     </>}
+
+    <Modal
+      opened={delegationState !== null}
+      onClose={() => setDelegationState(null)}
+      title='Confirm device'
+    >
+      {delegationState && entities && <DelegationConfirmContent
+        entities={entities}
+        state={delegationState}
+        setState={setDelegationState} />}
+    </Modal>
   </div>
 }
 

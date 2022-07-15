@@ -67,6 +67,10 @@ private val manager = WebAuthnManager(
     NullSelfAttestationTrustworthinessValidator(),
 )
 
+private val JsonIgnoreUnknown = Json {
+    ignoreUnknownKeys = true
+}
+
 private fun verifyAuth(
     keyId: String,
     signature: String,
@@ -110,7 +114,7 @@ private fun verifyCrossSignature(request: DelegatedPairFinishWA): Delegation {
 
     // Trust the data in the challenge - it's only for delegation purposes. We can verify the finish payload
     // against the copy we have.
-    val clientData = Json.decodeFromString<ClientData>(clientDataJSON.decodeBase64().decodeToString())
+    val clientData = JsonIgnoreUnknown.decodeFromString<ClientData>(clientDataJSON.decodeBase64().decodeToString())
     val challengeData = clientData.challenge.decodeBase64Url().decodeToString()
     val delegation = Json.decodeFromString<Delegation>(challengeData)
 
