@@ -1,13 +1,17 @@
-import React, { useEffect, useState } from 'react';
-import logo from './logo.svg';
-import './App.css';
-import { Button, Checkbox, Chip, Chips, Divider, Loader, Modal, Text } from '@mantine/core';
-import useSWR from 'swr';
+import React, { useEffect, useState } from 'react'
+import logo from './logo.svg'
+import './App.css'
+import { Button, Checkbox, Chip, Chips, Divider, Loader, Modal, Text } from '@mantine/core'
+import useSWR from 'swr'
 import * as base64 from 'base64-arraybuffer'
 import QRCode from 'react-qr-code'
-import { DelegatedPairFinishWA, Delegation, Entity, InitialPairFinishRequest, PairFinishChallengeWA, PairFinishWA, PairingChallenge, UnlockFinishWA, UnlockStartRequest } from './api-types';
-import { extractFinishPublicKey, publicKeyToEmoji } from './webauthn';
-import { DatePicker } from '@mantine/dates';
+import { DelegatedPairFinishWA, Delegation, Entity, InitialPairFinishRequest, PairFinishChallengeWA, PairFinishWA, PairingChallenge, UnlockFinishWA, UnlockStartRequest } from './api-types'
+import { extractFinishPublicKey, publicKeyToEmoji } from './webauthn'
+import { DatePicker } from '@mantine/dates'
+import { stringToBytes } from './bytes'
+import { BrowserWebAuthenticator } from './webauthn/browser'
+import { LarchWebAuthenticator } from './webauthn/larch'
+import { printCreate } from './webauthn/debug'
 
 const API_BASE_URL = 'http://localhost:3002/api'
 
@@ -30,16 +34,7 @@ export interface DelegationState {
   finishRequest: PairFinishWA
 }
 
-const encoder = new TextEncoder()
-const decoder = new TextDecoder()
-
-function toBytes(str: string) {
-  return encoder.encode(str)
-}
-
-function fromBytes(data: ArrayBuffer) {
-  return decoder.decode(data)
-}
+let authenticator = new BrowserWebAuthenticator()
 
 function getCredentialId() {
   return localStorage.credentialId! as string
@@ -58,9 +53,9 @@ async function unlock(entity: Entity) {
   })
 
   // Sign
-  let credential = await navigator.credentials.get({
+  let credential = await authenticator.get({
     publicKey: {
-      challenge: toBytes(JSON.stringify(challenge)),
+      challenge: stringToBytes(JSON.stringify(challenge)),
       rpId: 'localhost',
       allowCredentials: [{
         type: 'public-key',
@@ -100,10 +95,10 @@ async function startInitialPair(challenge: PairingChallenge) {
   let secretBytes = base64.decode(secretB64)
 
   // Sign response
-  let credential = await navigator.credentials.create({
+  let credential = await authenticator.create({
     publicKey: {
       // Use WebAuthn as an envelope for the challenge ID
-      challenge: toBytes(JSON.stringify({
+      challenge: stringToBytes(JSON.stringify({
         pairChallengeId: challenge.id,
       } as PairFinishChallengeWA)),
       rp: {
@@ -112,7 +107,7 @@ async function startInitialPair(challenge: PairingChallenge) {
       },
       user: {
         // Doesn't matter. We use PK as the identifier after registration
-        id: toBytes(crypto.randomUUID()),
+        id: stringToBytes(crypto.randomUUID()),
         name: 'Main',
         displayName: 'Main',
       },
@@ -125,6 +120,7 @@ async function startInitialPair(challenge: PairingChallenge) {
     }
   }) as PublicKeyCredential
   console.log(credential)
+  printCreate(credential)
   localStorage.credentialId = base64.encode(credential.rawId) // pre-encoded id is base64url
 
   // Prepare finish request
@@ -137,7 +133,7 @@ async function startInitialPair(challenge: PairingChallenge) {
 
   // HMAC to prove knowledge of secret
   let key = await crypto.subtle.importKey('raw', secretBytes, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'])
-  let mac = await crypto.subtle.sign('HMAC', key, toBytes(finishPayload))
+  let mac = await crypto.subtle.sign('HMAC', key, stringToBytes(finishPayload))
 
   // Finish
   await fetchApiJson(`/webauthn/pair/initial/${encodeURIComponent(challenge.id)}/finish`, {
@@ -158,10 +154,10 @@ async function startDelegatedPair(
   setDelegatedState: (state: DelegatedPairState) => void,
 ) {
   // Sign finish response
-  let credential = await navigator.credentials.create({
+  let credential = await authenticator.create({
     publicKey: {
       // Use WebAuthn as an envelope for the challenge ID
-      challenge: toBytes(JSON.stringify({
+      challenge: stringToBytes(JSON.stringify({
         pairChallengeId: challenge.id,
       } as PairFinishChallengeWA)),
       rp: {
@@ -170,7 +166,7 @@ async function startDelegatedPair(
       },
       user: {
         // Doesn't matter. We use PK as the identifier after registration
-        id: toBytes(crypto.randomUUID()),
+        id: stringToBytes(crypto.randomUUID()),
         name: 'Main',
         displayName: 'Main',
       },
@@ -183,6 +179,7 @@ async function startDelegatedPair(
     }
   }) as PublicKeyCredential
   console.log(credential)
+  printCreate(credential)
   localStorage.credentialId = base64.encode(credential.rawId) // pre-encoded id is base64url
 
   // Upload for cross-signing
@@ -254,10 +251,10 @@ async function finishCrossSign(
   setDelegationState: (state: DelegationState | null) => void,
 ) {
   // Sign it
-  let credential = await navigator.credentials.get({
+  let credential = await authenticator.get({
     publicKey: {
       // Wrapper to avoid out-of-context replay
-      challenge: toBytes(JSON.stringify({
+      challenge: stringToBytes(JSON.stringify({
         finishPayload: JSON.stringify(finishRequest),
         expiresAt,
         allowedEntities,
@@ -347,6 +344,15 @@ function App() {
   let [isPairing, setIsPairing] = useState(false)
   let [delegatedState, setDelegatedState] = useState<DelegatedPairState | null>(null)
   let [delegationState, setDelegationState] = useState<DelegationState | null>(null)
+  let [useLarch, setUseLarch] = useState(false)
+
+  useEffect(() => {
+    (async function() {
+      let newAuth = useLarch ? await LarchWebAuthenticator.create() : new BrowserWebAuthenticator()
+      console.log('authenticator:', authenticator, '->', newAuth)
+      authenticator = newAuth
+    })()
+  }, [useLarch])
 
   return <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'start', gap: 16, padding: 16 }}>
     {entities?.map(ent =>
@@ -363,6 +369,13 @@ function App() {
       setDelegatedState(null)
     }}>Pair</Button>
     <Button onClick={() => startCrossSign(setDelegationState)}>Add device</Button>
+
+    <Divider />
+
+    <Checkbox
+      label='Use Larch'
+      checked={useLarch}
+      onChange={ev => setUseLarch(ev.currentTarget.checked)} />
 
     <Divider />
 
@@ -400,4 +413,4 @@ function App() {
   </div>
 }
 
-export default App;
+export default App
