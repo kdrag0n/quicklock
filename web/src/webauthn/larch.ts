@@ -53,20 +53,21 @@ export class LarchWebAuthenticator implements WebAuthenticator {
     console.log('credentialId', bytesToHex(credentialId))
     // COSE_Key: https://datatracker.ietf.org/doc/html/rfc8152#section-7.1
     let credentialPublicKeyData = {
-      kty: 2, // EC
-      alg: -7, // ES256
-      crv: 1, // P-256
-      x: result.publicKey.x,
-      y: result.publicKey.y,
+      1: 2, // kty = EC
+      3: -7, // alg = ES256
+      [-1]: 1, // crv = P-256
+      [-2]: result.publicKey.x, // x
+      [-3]: result.publicKey.y, // y
     }
     console.log('credentialPublicKeyData', credentialPublicKeyData)
-    console.log('pk x', base64.encode(credentialPublicKeyData.x))
-    console.log('pk y', base64.encode(credentialPublicKeyData.y))
+    console.log('pk x', base64.encode(result.publicKey.x))
+    console.log('pk y', base64.encode(result.publicKey.y))
     let credentialPublicKey = CBOR.encode(credentialPublicKeyData)
     console.log('credentialPublicKey', base64.encode(credentialPublicKey))
-    console.log('credentialPublicKey length', credentialPublicKey.length) // must be 77
+    // should be 77 according to CTAP1 compat doc, but it doesn't actually matter
+    console.log('credentialPublicKey length', credentialPublicKey.length)
 
-    let attestedCredData = new Uint8Array(16 + 2 + credentialIdLength + 77)
+    let attestedCredData = new Uint8Array(16 + 2 + credentialIdLength + credentialPublicKey.length)
     let attestedView = new DataView(attestedCredData.buffer)
     // aaguid 16: all zeros
     attestedView.setUint16(16, credentialIdLength, false)
