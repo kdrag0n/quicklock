@@ -26,12 +26,12 @@ export interface NativeInitRequest {
 }
 
 export interface NativeInitResponse {
-  pk: string | Uint8Array
+  pk: string
 }
 
 export interface NativeRegResponse {
-  pk_x: string | Uint8Array
-  pk_y: string | Uint8Array
+  pk_x: string
+  pk_y: string
 }
 
 export interface NativeAuthRequest {
@@ -47,11 +47,11 @@ export interface NativeAuthRequest {
 }
 
 export interface NativeAuthResponse {
-  prod: string | Uint8Array
-  d: string | Uint8Array
-  e: string | Uint8Array
+  prod: string
+  d: string
+  e: string
   session_ctr: number
-  cm_check_d: string | Uint8Array
+  cm_check_d: string
 }
 
 export interface NativeAuthCheckRequest {
@@ -61,8 +61,8 @@ export interface NativeAuthCheckRequest {
 }
 
 export interface NativeAuthCheckResponse {
-  check_d: string | Uint8Array
-  check_d_open: string | Uint8Array
+  check_d: string
+  check_d_open: string
 }
 
 export interface NativeAuthCheck2Request {
@@ -73,7 +73,7 @@ export interface NativeAuthCheck2Request {
 }
 
 export interface NativeAuthCheck2Response {
-  out: string | Uint8Array
+  out: string
 }
 
 /*

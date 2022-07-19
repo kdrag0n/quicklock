@@ -34,3 +34,7 @@ export function bytesToBuffer(array: Uint8Array) {
 export function rawStringToBytes(str: string): Uint8Array {
   return Uint8Array.from(str, c => c.charCodeAt(0))
 }
+
+export function decodeB64(data: string) {
+  return new Uint8Array(base64.decode(data))
+}

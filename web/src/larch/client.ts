@@ -1,4 +1,4 @@
-import { rawStringToBytes } from "../bytes"
+import { bytesToHex, decodeB64, rawStringToBytes } from "../bytes"
 import { LogServiceProxy } from "./remote"
 import { NativeAuthenticateResult, NativeRegisterResult } from "./types"
 
@@ -47,6 +47,10 @@ export class LarchClient {
     let proxy = new LogServiceProxy()
     let module = await window.createLarchClient({
       logServiceProxy: proxy,
+
+      print(text: string) {
+        console.log('[wasm]', text)
+      }
     })
     return new LarchClient(module)
   }
@@ -67,17 +71,17 @@ export class LarchClient {
 
     console.log('register', appIdStr, challengeStr)
     let result = await this.module.Client__Register(this.ptr, appIdStr, challengeStr)
-    console.log(result)
+    console.log('register done', result)
     await this.writeToStorage()
   
     return {
-      keyHandle: rawStringToBytes(result.key_handle),
+      keyHandle: decodeB64(result.key_handle),
       publicKey: {
-        x: rawStringToBytes(result.pk_x),
-        y: rawStringToBytes(result.pk_y),
+        x: decodeB64(result.pk_x),
+        y: decodeB64(result.pk_y),
       },
-      certificate: rawStringToBytes(result.cert),
-      signature: rawStringToBytes(result.sig),
+      certificate: decodeB64(result.cert),
+      signature: decodeB64(result.sig),
     }
   }
 
@@ -97,7 +101,7 @@ export class LarchClient {
     return {
       flags: result.flags,
       counter: result.counter,
-      signature: rawStringToBytes(result.sig),
+      signature: decodeB64(result.sig),
     }
   }
 
