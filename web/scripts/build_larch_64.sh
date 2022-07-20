@@ -3,15 +3,15 @@
 emcmake cmake . \
     -DCMAKE_PREFIX_PATH=/home/dragon/code/crypto/prefix-emptool \
     -DCMAKE_BUILD_TYPE=Release \
-    -DOPENSSL_ROOT_DIR=/home/dragon/code/crypto/prefix \
-    -DOPENSSL_INCLUDE_DIR=/home/dragon/code/crypto/prefix/include \
-    -DOPENSSL_CRYPTO_LIBRARY=/home/dragon/code/crypto/prefix/lib/libcrypto.a \
-    -DOPENSSL_SSL_LIBRARY=/home/dragon/code/crypto/prefix/lib/libssl.a \
+    -DOPENSSL_ROOT_DIR=/home/dragon/code/crypto/prefix-openssl-wasm64 \
+    -DOPENSSL_INCLUDE_DIR=/home/dragon/code/crypto/prefix-openssl-wasm64/include \
+    -DOPENSSL_CRYPTO_LIBRARY=/home/dragon/code/crypto/prefix-openssl-wasm64/lib/libcrypto.a \
+    -DOPENSSL_SSL_LIBRARY=/home/dragon/code/crypto/prefix-openssl-wasm64/lib/libssl.a \
     -DCMAKE_FOLDER=/home/dragon/code/crypto/prefix-emptool \
     -Demp-tool_DIR=/home/dragon/code/crypto/prefix-emptool/cmake \
     -DEMP-TOOL_INCLUDE_DIR=/home/dragon/code/crypto/prefix-emptool/include \
     -DEMP-TOOL_LIBRARY=/home/dragon/code/crypto/prefix-emptool/lib/libemp-tool.so
-emmake make -j48 client_lib
+emmake make -j48
 
     # -DCMAKE_C_FLAGS="-O3 -sASYNCIFY -sPROXY_TO_PTHREAD -sWASM_BIGINT -msimd128 -msse -msse2 -msse3 -mssse3 -msse4.1 -msse4.2 -mfpu=neon" \
     # -DCMAKE_CXX_FLAGS="-O3 -sASYNCIFY -sPROXY_TO_PTHREAD -sWASM_BIGINT -msimd128 -msse -msse2 -msse3 -mssse3 -msse4.1 -msse4.2 -mfpu=neon" \
