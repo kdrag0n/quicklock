@@ -38,3 +38,7 @@ export function rawStringToBytes(str: string): Uint8Array {
 export function decodeB64(data: string) {
   return new Uint8Array(base64.decode(data))
 }
+
+export function encodeB64(data: Uint8Array) {
+  return base64.encode(data)
+}

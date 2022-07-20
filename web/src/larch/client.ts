@@ -1,12 +1,14 @@
-import { bytesToHex, decodeB64, rawStringToBytes } from "../bytes"
+import { bytesToHex, decodeB64, encodeB64, rawStringToBytes } from "../bytes"
 import { LogServiceProxy } from "./remote"
 import { NativeAuthenticateResult, NativeRegisterResult } from "./types"
 
 interface LarchClientModule extends EmscriptenModule {
   logServiceProxy: LogServiceProxy
 
+  // MODULARIZE = no global fs
   FS: {
     mkdirTree(path: string): void
+    writeFile(path: string, data: string): void
   }
 
   Client__Create(readFromStorage: boolean): number
@@ -24,20 +26,18 @@ declare global {
   }
 }
 
-function bytesToString(bytes: Uint8Array): string {
-  let string = ''
-  for (let i = 0; i < bytes.length; i++) {
-    string += String.fromCharCode(bytes[i])
-  }
-  return string
-}
-
 export class LarchClient {
   private readonly ptr: number
   private initialized: boolean
 
-  private constructor(private readonly module: LarchClientModule) {
+  private constructor(private readonly module: LarchClientModule, sha256Circuit: string) {
+    // For client state
     module.FS.mkdirTree('/home/dragon/code/crypto/larch-wasm/out')
+
+    // Write SHA-256 ZKBoo circuit
+    module.FS.mkdirTree('/home/dragon/code/crypto/larch-wasm/zkboo/circuit_files')
+    module.FS.writeFile('/home/dragon/code/crypto/larch-wasm/zkboo/circuit_files/sha-256-multiblock-aligned.txt', sha256Circuit)
+
     this.ptr = module.Client__Create(false)
     console.log('ptr', this.ptr)
     this.initialized = false
@@ -45,6 +45,8 @@ export class LarchClient {
 
   static async create() {
     let proxy = new LogServiceProxy()
+
+    // Load WASM module
     let module = await window.createLarchClient({
       logServiceProxy: proxy,
 
@@ -52,7 +54,12 @@ export class LarchClient {
         console.log('[wasm]', text)
       }
     })
-    return new LarchClient(module)
+
+    // Load SHA-256 ZKBoo circuit
+    let resp = await fetch('/sha-256-multiblock-aligned.txt')
+    let sha256Circuit = await resp.text()
+
+    return new LarchClient(module, sha256Circuit)
   }
 
   async init() {
@@ -66,8 +73,8 @@ export class LarchClient {
       await this.init()
     }
 
-    let appIdStr = bytesToString(appId)
-    let challengeStr = bytesToString(challenge)
+    let appIdStr = encodeB64(appId)
+    let challengeStr = encodeB64(challenge)
 
     console.log('register', appIdStr, challengeStr)
     let result = await this.module.Client__Register(this.ptr, appIdStr, challengeStr)
@@ -90,9 +97,9 @@ export class LarchClient {
       await this.init()
     }
 
-    let appIdStr = bytesToString(appId)
-    let challengeStr = bytesToString(challenge)
-    let keyHandleStr = bytesToString(keyHandle)
+    let appIdStr = encodeB64(appId)
+    let challengeStr = encodeB64(challenge)
+    let keyHandleStr = encodeB64(keyHandle)
 
     console.log('authenticate', appIdStr, challengeStr, keyHandleStr)
     let result = await this.module.Client__Authenticate(this.ptr, appIdStr, challengeStr, keyHandleStr)

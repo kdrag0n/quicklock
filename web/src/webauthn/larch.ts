@@ -34,7 +34,7 @@ export class LarchWebAuthenticator implements WebAuthenticator {
     console.log('clientDataJson', clientDataJson)
     console.log('clientDataHash', bytesToHex(clientDataHash))
 
-    let rpId = pkOptions.rp.id!
+    let rpId = pkOptions.rp.id! // TODO: fallback
     let rpIdHash = new Uint8Array(await crypto.subtle.digest('SHA-256', stringToBytes(rpId)))
     console.log('rpId', rpId)
     console.log('rpIdHash', bytesToHex(rpIdHash))
@@ -114,6 +114,61 @@ export class LarchWebAuthenticator implements WebAuthenticator {
   }
 
   async get(options: CredentialRequestOptions): Promise<PublicKeyCredential> {
-    throw new Error('Not implemented')
+    let pkOptions = options.publicKey!
+    let credentialId = pkOptions.allowCredentials![0].id as Uint8Array // TODO: check type
+
+    // TODO: use local authenticator
+    let clientData = {
+      type: 'webauthn.get',
+      challenge: encodeBase64Url(pkOptions.challenge as Uint8Array),
+      origin: window.location.origin,
+      crossOrigin: false,
+    }
+    let clientDataJson = JSON.stringify(clientData)
+    let clientDataBytes = stringToBytes(clientDataJson)
+    let clientDataHash = new Uint8Array(await crypto.subtle.digest('SHA-256', clientDataBytes))
+    console.log('clientData', clientData)
+    console.log('clientDataJson', clientDataJson)
+    console.log('clientDataHash', bytesToHex(clientDataHash))
+
+    let rpId = pkOptions.rpId! // TODO: fallback
+    let rpIdHash = new Uint8Array(await crypto.subtle.digest('SHA-256', stringToBytes(rpId)))
+    console.log('rpId', rpId)
+    console.log('rpIdHash', bytesToHex(rpIdHash))
+
+    // U2F CTAP1 compat
+    // https://fidoalliance.org/specs/fido-v2.1-rd-20210309/fido-client-to-authenticator-protocol-v2.1-rd-20210309.html#u2f-authenticatorGetAssertion-interoperability
+    let challenge = clientDataHash
+    let appId = rpIdHash
+    let keyHandle = credentialId
+    let result = await this.client.authenticate(appId, challenge, keyHandle)
+    console.log('U2F result', result)
+
+    // Compat: map back to CTAP2
+    let authenticatorData = new Uint8Array(32 + 1 + 4)
+    let authDataView = new DataView(authenticatorData.buffer)
+    // rpIdHash 32
+    authenticatorData.set(rpIdHash, 0)
+    // flags (larch sets bit 0 for user presence)
+    let flags = result.flags & 0b11 // copy bits 0 and 1, set others to zero
+    authDataView.setUint8(32, flags)
+    // signCount
+    authDataView.setUint32(33, result.counter, false)
+    
+    return {
+      type: 'public-key',
+      id: encodeBase64Url(credentialId),
+      rawId: credentialId,
+      response: {
+        authenticatorData,
+        clientDataJSON: stringToBytes(clientDataJson),
+        signature: result.signature,
+        userHandle: null,
+      } as AuthenticatorAssertionResponse,
+
+      getClientExtensionResults() {
+          return {}
+      },
+    }
   }
 }
