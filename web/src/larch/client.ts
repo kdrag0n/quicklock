@@ -14,7 +14,7 @@ interface LarchClientModule extends EmscriptenModule {
   Client__Create(readFromStorage: boolean): number
   Client__Initialize(ptr: number): Promise<number>
   Client__Register(ptr: number, appId: string, challenge: string): Promise<NativeRegisterResult>
-  Client__Authenticate(ptr: number, appId: string, challenge: string, keyHandle: string): Promise<NativeAuthenticateResult>
+  Client__Authenticate(ptr: number, appId: string, challenge: string, keyHandle: string, lastCounter: number): Promise<NativeAuthenticateResult>
   Client__WriteToStorage(ptr: number): void
 }
 
@@ -80,6 +80,7 @@ export class LarchClient {
     let result = await this.module.Client__Register(this.ptr, appIdStr, challengeStr)
     console.log('register done', result)
     await this.writeToStorage()
+    localStorage.larch__lastCounter = 0
   
     return {
       keyHandle: decodeB64(result.key_handle),
@@ -100,10 +101,12 @@ export class LarchClient {
     let appIdStr = encodeB64(appId)
     let challengeStr = encodeB64(challenge)
     let keyHandleStr = encodeB64(keyHandle)
+    let lastCounter = parseInt(localStorage.larch__lastCounter ?? '0')
 
-    console.log('authenticate', appIdStr, challengeStr, keyHandleStr)
-    let result = await this.module.Client__Authenticate(this.ptr, appIdStr, challengeStr, keyHandleStr)
+    console.log('authenticate', appIdStr, challengeStr, keyHandleStr, lastCounter)
+    let result = await this.module.Client__Authenticate(this.ptr, appIdStr, challengeStr, keyHandleStr, lastCounter)
     await this.writeToStorage()
+    localStorage.larch__lastCounter = result.counter
 
     return {
       flags: result.flags,
