@@ -3,10 +3,10 @@
 emcmake cmake . \
     -DCMAKE_PREFIX_PATH=/home/dragon/code/crypto/prefix-emptool \
     -DCMAKE_BUILD_TYPE=Release \
-    -DOPENSSL_ROOT_DIR=/home/dragon/code/crypto/prefix \
-    -DOPENSSL_INCLUDE_DIR=/home/dragon/code/crypto/prefix/include \
-    -DOPENSSL_CRYPTO_LIBRARY=/home/dragon/code/crypto/prefix/lib/libcrypto.a \
-    -DOPENSSL_SSL_LIBRARY=/home/dragon/code/crypto/prefix/lib/libssl.a \
+    -DOPENSSL_ROOT_DIR=/home/dragon/code/crypto/prefix-openssl-threads \
+    -DOPENSSL_INCLUDE_DIR=/home/dragon/code/crypto/prefix-openssl-threads/include \
+    -DOPENSSL_CRYPTO_LIBRARY=/home/dragon/code/crypto/prefix-openssl-threads/lib/libcrypto.a \
+    -DOPENSSL_SSL_LIBRARY=/home/dragon/code/crypto/prefix-openssl-threads/lib/libssl.a \
     -DCMAKE_FOLDER=/home/dragon/code/crypto/prefix-emptool \
     -Demp-tool_DIR=/home/dragon/code/crypto/prefix-emptool/cmake \
     -DEMP-TOOL_INCLUDE_DIR=/home/dragon/code/crypto/prefix-emptool/include \
