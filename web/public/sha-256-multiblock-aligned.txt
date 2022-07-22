@@ -1,1 +1,0 @@
-../../../../crypto/larch-wasm/zkboo/circuit_files/sha-256-multiblock-aligned.txt

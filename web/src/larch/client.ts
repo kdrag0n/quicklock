@@ -30,13 +30,9 @@ export class LarchClient {
   private readonly ptr: number
   private initialized: boolean
 
-  private constructor(private readonly module: LarchClientModule, sha256Circuit: string) {
+  private constructor(private readonly module: LarchClientModule) {
     // For client state
     module.FS.mkdirTree('/home/dragon/code/crypto/larch-wasm/out')
-
-    // Write SHA-256 ZKBoo circuit
-    module.FS.mkdirTree('/home/dragon/code/crypto/larch-wasm/zkboo/circuit_files')
-    module.FS.writeFile('/home/dragon/code/crypto/larch-wasm/zkboo/circuit_files/sha-256-multiblock-aligned.txt', sha256Circuit)
 
     this.ptr = module.Client__Create(false)
     console.log('ptr', this.ptr)
@@ -55,11 +51,7 @@ export class LarchClient {
       }
     })
 
-    // Load SHA-256 ZKBoo circuit
-    let resp = await fetch('/sha-256-multiblock-aligned.txt')
-    let sha256Circuit = await resp.text()
-
-    return new LarchClient(module, sha256Circuit)
+    return new LarchClient(module)
   }
 
   async init() {
