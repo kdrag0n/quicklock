@@ -6,9 +6,13 @@ interface LarchClientModule extends EmscriptenModule {
   logServiceProxy: LogServiceProxy
 
   // MODULARIZE = no global fs
+  IDBFS: Emscripten.FileSystemType
   FS: {
+    mkdir(path: string): void
     mkdirTree(path: string): void
     writeFile(path: string, data: string): void
+    mount(type: Emscripten.FileSystemType, opts: any, mountpoint: string): void
+    syncfs(populate: boolean, callback: (e: any) => any): void
   }
 
   Client__Create(readFromStorage: boolean): number
@@ -32,7 +36,8 @@ export class LarchClient {
 
   private constructor(private readonly module: LarchClientModule) {
     // For client state
-    module.FS.mkdirTree('/home/dragon/code/crypto/larch-wasm/out')
+    module.FS.mkdir('/data')
+    module.FS.mount(module.IDBFS, {}, '/data')
 
     this.ptr = module.Client__Create(false)
     console.log('ptr', this.ptr)
@@ -54,7 +59,22 @@ export class LarchClient {
     return new LarchClient(module)
   }
 
+  syncFs(populate: boolean) {
+    return new Promise<void>((resolve, reject) => {
+      this.module.FS.syncfs(populate, err => {
+        if (err) {
+          reject(err)
+        } else {
+          resolve()
+        }
+      })
+    })
+  }
+
   async init() {
+    console.log('load storage')
+    await this.syncFs(true)
+
     console.log('init')
     await this.module.Client__Initialize(this.ptr)
     this.initialized = true
@@ -114,6 +134,7 @@ export class LarchClient {
 
     console.log('writeToStorage')
     this.module.Client__WriteToStorage(this.ptr)
+    await this.syncFs(false)
   }
 
   // TODO: finalizer, free client
