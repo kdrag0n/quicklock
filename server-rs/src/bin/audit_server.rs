@@ -1,18 +1,15 @@
-mod error;
-mod store;
-mod serialize;
+use qlock::error::Error;
+use qlock::store::{AuthEvent, DataStore, PairedDevice};
+use qlock::serialize::{base64 as serde_b64};
 
 use std::time::SystemTime;
-use actix_web::{get, post, web, App, HttpResponse, HttpServer, Responder, ResponseError};
+use actix_web::{post, web, App, HttpServer, Responder};
 use actix_web::middleware::Logger;
 use actix_web::web::Json;
 use anyhow::anyhow;
 use bls_signatures::{PrivateKey, PublicKey, Serialize as BlsSerialize, Signature};
 use rand::rngs::OsRng;
-use crate::error::Error;
 use serde::{Serialize, Deserialize};
-use crate::store::{AuthEvent, DataStore, PairedDevice};
-use crate::serialize::{base64 as serde_b64};
 use base64;
 use ulid::Ulid;
 use std::str;

@@ -240,22 +240,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "auditor"
-version = "0.1.0"
-dependencies = [
- "actix-web",
- "anyhow",
- "base64",
- "bls-signatures",
- "once_cell",
- "pretty_env_logger",
- "rand",
- "serde",
- "serde_json",
- "ulid",
-]
-
-[[package]]
 name = "autocfg"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -993,6 +977,22 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dd96a1e8ed2596c337f8eae5f24924ec83f5ad5ab21ea8e455d3566c69fbcaf7"
 dependencies = [
  "unicode-ident",
+]
+
+[[package]]
+name = "qlock"
+version = "0.1.0"
+dependencies = [
+ "actix-web",
+ "anyhow",
+ "base64",
+ "bls-signatures",
+ "once_cell",
+ "pretty_env_logger",
+ "rand",
+ "serde",
+ "serde_json",
+ "ulid",
 ]
 
 [[package]]
