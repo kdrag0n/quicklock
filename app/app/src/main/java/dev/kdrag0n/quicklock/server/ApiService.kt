@@ -96,8 +96,8 @@ data class SignedDelegation(
 
 @JsonClass(generateAdapter = true)
 data class InitialPairFinishRequest(
-    val payload: String,
-    val hmac: String,
+    val finishPayload: String,
+    val mac: String,
 )
 
 @JsonClass(generateAdapter = true)

@@ -4,15 +4,12 @@
 
 extern "C" {
 
-JNIEXPORT void JNICALL
-Java_dev_kdrag0n_quicklock_NativeLib_init(JNIEnv *env, jclass clazz) {}
-
 JNIEXPORT jbyteArray JNICALL
 Java_dev_kdrag0n_quicklock_NativeLib_blsGeneratePrivateKey(JNIEnv *env, jclass clazz, jbyteArray seed) {
     auto seed_ptr = env->GetByteArrayElements(seed, nullptr);
     bls::Bytes seed_bytes((uint8_t*) seed_ptr, env->GetArrayLength(seed));
 
-    auto sk = bls::AugSchemeMPL().KeyGen(seed_bytes);
+    auto sk = bls::BasicSchemeMPL().KeyGen(seed_bytes);
     auto sk_data = sk.Serialize();
 
     auto sk_out = env->NewByteArray((jsize) sk_data.size());
@@ -34,7 +31,8 @@ Java_dev_kdrag0n_quicklock_NativeLib_blsSignMessage(JNIEnv *env, jclass clazz, j
     auto msg_data = env->GetByteArrayElements(message, nullptr);
 
     std::vector<uint8_t> sig_buf(96);
-    auto sig = sk.SignG2((uint8_t*) msg_data, env->GetArrayLength(message), sig_buf.data(), sig_buf.size());
+    std::vector<uint8_t> msg_vec(msg_data, msg_data + env->GetArrayLength(message));
+    auto sig = bls::BasicSchemeMPL().Sign(sk, msg_vec);
     auto sig_data = sig.Serialize();
 
     auto sig_out = env->NewByteArray((jsize) sig_data.size());

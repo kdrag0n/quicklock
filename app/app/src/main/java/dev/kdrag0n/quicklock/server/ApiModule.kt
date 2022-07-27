@@ -43,10 +43,10 @@ object ApiModule {
 private object ByteArrayAdapter : JsonAdapter<ByteArray>() {
     override fun fromJson(reader: JsonReader): ByteArray? {
         val string = reader.nextString()
-        return string?.let { Base64.decode(it, Base64.DEFAULT) }
+        return string?.let { Base64.decode(it, Base64.NO_WRAP) }
     }
 
     override fun toJson(writer: JsonWriter, value: ByteArray?) {
-        writer.value(value?.let { Base64.encodeToString(it, Base64.DEFAULT) })
+        writer.value(value?.let { Base64.encodeToString(it, Base64.NO_WRAP) })
     }
 }

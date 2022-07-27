@@ -122,9 +122,9 @@ class ApiClient @Inject constructor(
         val payload = initialQrAdapter.fromJson(scannedData)!!
         val state = currentPairState ?: return
         service.finishInitialPair(InitialPairFinishRequest(
-            payload = state.finishPayloadData,
+            finishPayload = state.finishPayloadData,
             // HMAC using secret. Proves auth without being vulnerable to MITM.
-            hmac = state.finishPayloadData.toByteArray().toByteString()
+            mac = state.finishPayloadData.toByteArray().toByteString()
                 .hmacSha256(payload.secret.decodeBase64()!!)
                 .base64(),
         ))
