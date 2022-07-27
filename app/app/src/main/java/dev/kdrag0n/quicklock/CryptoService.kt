@@ -4,15 +4,19 @@ import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
 import dagger.Reusable
+import okio.ByteString.Companion.decodeBase64
 import java.security.KeyPairGenerator
 import java.security.KeyStore
 import java.security.PublicKey
+import java.security.SecureRandom
 import java.security.Signature
 import java.util.*
 import javax.inject.Inject
 
 @Reusable
-class CryptoService @Inject constructor() {
+class CryptoService @Inject constructor(
+    private val settings: SettingsRepository,
+) {
     private val keystore by lazy {
         KeyStore.getInstance("AndroidKeyStore").apply {
             load(null)
@@ -27,6 +31,27 @@ class CryptoService @Inject constructor() {
 
     val delegationKeyEncoded
         get() = getKeyEntry(alias = DELEGATION_ALIAS).certificate.publicKey.encoded.toBase64()
+
+    val blsPublicKeyEncoded: String
+        get() {
+            val sk = settings.blsPrivateKey!!.decodeBase64()!!.toByteArray()
+            val pk = NativeLib.blsDerivePublicKey(sk)
+            return pk.toBase64()
+        }
+
+    fun generateBlsKey(): ByteArray {
+        val seed = ByteArray(32)
+        SecureRandom.getInstanceStrong().nextBytes(seed)
+        val key = NativeLib.blsGeneratePrivateKey(seed)
+        settings.blsPrivateKey = key.toBase64()
+        return key
+    }
+
+    fun signBls(data: ByteArray): ByteArray {
+        val sk = settings.blsPrivateKey!!.decodeBase64()!!.toByteArray()
+        val sig = NativeLib.blsSignMessage(sk, data)
+        return sig
+    }
 
     fun generateKey(challengeId: String, isDelegation: Boolean = false): PublicKey {
         val alias = if (isDelegation) DELEGATION_ALIAS else ALIAS

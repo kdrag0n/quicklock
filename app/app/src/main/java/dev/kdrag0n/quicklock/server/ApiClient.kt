@@ -12,6 +12,7 @@ import kotlinx.coroutines.launch
 import okio.ByteString
 import okio.ByteString.Companion.decodeBase64
 import okio.ByteString.Companion.toByteString
+import retrofit2.Response
 import java.io.IOException
 import java.security.Signature
 import javax.inject.Inject
@@ -32,6 +33,7 @@ data class DelegationState(
 @Singleton
 class ApiClient @Inject constructor(
     private val service: ApiService,
+    private val auditor: AuditService,
     private val crypto: CryptoService,
     moshi: Moshi,
 ) {
@@ -54,10 +56,7 @@ class ApiClient @Inject constructor(
         }
     }
 
-    private suspend fun getEntities() = service.getEntities().let {
-        val body = if (it.isSuccessful) it.body() else null
-        body ?: throw RequestException(it.errorBody()?.string() ?: "Unknown error")
-    }
+    private suspend fun getEntities() = service.getEntities().unwrap()
 
     suspend fun startPair(): Challenge {
         currentPairState?.let {
@@ -65,10 +64,7 @@ class ApiClient @Inject constructor(
         }
 
         // Get a challenge
-        val challenge = service.getPairingChallenge().let {
-            val body = if (it.isSuccessful) it.body() else null
-            body ?: throw RequestException(it.errorBody()?.string() ?: "Unknown error")
-        }
+        val challenge = service.getPairingChallenge().unwrap()
 
         val (payload, data) = getFinishPayload(challenge)
         if (challenge.isInitial) {
@@ -87,13 +83,21 @@ class ApiClient @Inject constructor(
         return challenge
     }
 
-    private fun getFinishPayload(challenge: Challenge): Pair<PairFinishPayload, String> {
+    private suspend fun getFinishPayload(challenge: Challenge): Pair<PairFinishPayload, String> {
         val mainKey = crypto.generateKey(challenge.id)
         val delegationKey = crypto.generateKey(challenge.id, isDelegation = true)
+
+        crypto.generateBlsKey()
+        val clientBlsPk = crypto.blsPublicKeyEncoded
+        val serverBlsPk = auditor.register(RegisterRequest(
+            clientPk = crypto.blsPublicKeyEncoded,
+        )).unwrap().serverPk
+
         val req = PairFinishPayload(
             challengeId = challenge.id,
             publicKey = mainKey.encoded.toBase64(),
             delegationKey = delegationKey.encoded.toBase64(),
+            blsPublicKeys = listOf(clientBlsPk, serverBlsPk),
             mainAttestationChain = crypto.getAttestationChain(),
             delegationAttestationChain = crypto.getAttestationChain(CryptoService.DELEGATION_ALIAS),
         )
@@ -149,9 +153,7 @@ class ApiClient @Inject constructor(
         }
 
         val qr = delegatedQrAdapter.fromJson(payload)!!
-        val req = service.getDelegatedPairFinishPayload(qr.challenge).let {
-            if (it.isSuccessful) it.body() else null
-        } ?: throw RequestException("Failed to get delegated pair finish payload")
+        val req = service.getDelegatedPairFinishPayload(qr.challenge).unwrap()
         val reqData = pairFinishAdapter.toJson(req)
         require(req.challengeId == qr.challenge)
 
@@ -159,6 +161,15 @@ class ApiClient @Inject constructor(
             finishPayload = req,
             finishPayloadData = reqData,
         )
+    }
+
+    suspend fun signBlsAggregate(data: ByteArray): String {
+        val (aggSig) = auditor.sign(SignRequest(
+            clientPk = crypto.blsPublicKeyEncoded,
+            message = data,
+            clientSig = crypto.signBls(data),
+        )).unwrap()
+        return aggSig
     }
 
     fun prepareDelegationSignature(): Signature {
@@ -174,27 +185,27 @@ class ApiClient @Inject constructor(
             allowedEntities = allowedEntities,
         )
         val delegationData = delegationAdapter.toJson(delegation)
+        val message = delegationData.encodeToByteArray()
 
         val signed = SignedDelegation(
             device = crypto.publicKeyEncoded,
             delegation = delegationData,
-            signature = crypto.finishSignature(sig, delegationData),
+            blsSignature = signBlsAggregate(message),
+            ecSignature = crypto.finishSignature(sig, delegationData),
         )
         service.finishDelegatedPair(req.challengeId, signed)
         currentDelegationState = null
     }
 
     suspend fun unlock(entityId: String) {
-        val challenge = service.startUnlock(UnlockStartRequest(entityId)).let {
-            val body = if (it.isSuccessful) it.body() else null
-            body ?: throw RequestException(it.errorBody()?.string() ?: "Unknown error")
-        }
+        val challenge = service.startUnlock(UnlockStartRequest(entityId)).unwrap()
         require(challenge.entityId == entityId)
 
         val challengeData = unlockChallengeAdapter.toJson(challenge)
         val request = UnlockFinishRequest(
             publicKey = crypto.publicKeyEncoded,
-            signature = crypto.signPayload(challengeData),
+            blsSignature = signBlsAggregate(challengeData.encodeToByteArray()),
+            ecSignature = crypto.signPayload(challengeData),
         )
         service.finishUnlock(challenge.id, request)
     }
@@ -203,3 +214,8 @@ class ApiClient @Inject constructor(
 class RequestException(message: String) : IOException(message)
 
 private operator fun ByteString.plus(other: ByteString) = (toByteArray() + other.toByteArray()).toByteString()
+
+private fun <T> Response<T>.unwrap(): T {
+    val body = if (isSuccessful) body() else null
+    return body ?: throw RequestException(errorBody()?.string() ?: "Unknown error")
+}

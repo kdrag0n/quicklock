@@ -6,4 +6,7 @@ object NativeLib {
     }
 
     @JvmStatic external fun init()
+    @JvmStatic external fun blsGeneratePrivateKey(seed: ByteArray): ByteArray
+    @JvmStatic external fun blsDerivePublicKey(privateKey: ByteArray): ByteArray
+    @JvmStatic external fun blsSignMessage(skData: ByteArray, message: ByteArray): ByteArray
 }

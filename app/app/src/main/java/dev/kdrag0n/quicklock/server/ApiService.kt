@@ -74,6 +74,7 @@ data class PairFinishPayload(
     val challengeId: String,
     val publicKey: String,
     val delegationKey: String,
+    val blsPublicKeys: List<String>,
     val mainAttestationChain: List<String>,
     val delegationAttestationChain: List<String>,
 )
@@ -89,7 +90,8 @@ data class Delegation(
 data class SignedDelegation(
     val device: String,
     val delegation: String,
-    val signature: String,
+    val blsSignature: String,
+    val ecSignature: String,
 )
 
 @JsonClass(generateAdapter = true)
@@ -114,5 +116,6 @@ data class UnlockStartRequest(
 data class UnlockFinishRequest(
     // Challenge ID is in URL
     val publicKey: String,
-    val signature: String,
+    val blsSignature: String,
+    val ecSignature: String,
 )
