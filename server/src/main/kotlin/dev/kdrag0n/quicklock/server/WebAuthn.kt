@@ -162,6 +162,7 @@ private fun finishPair(
         expiresAt = expiresAt,
         delegatedBy = delegatedBy,
         allowedEntities = allowedEntities,
+        blsPublicKeys = null,
 
         // State
         serializedAuthenticator = authenticator.serializeToByteArray().toBase64(),

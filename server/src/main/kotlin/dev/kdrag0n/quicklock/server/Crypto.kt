@@ -54,8 +54,8 @@ object Crypto {
 
     fun verifySignature(payload: String, publicKey: String, signature: String) {
         val sig = Signature.getInstance("SHA256withECDSA")
-        sig.initVerify(Crypto.parsePublicKey(publicKey))
-        sig.update(payload.serializeToByteArray())
+        sig.initVerify(parsePublicKey(publicKey))
+        sig.update(payload.encodeToByteArray())
         require(sig.verify(signature.decodeBase64()))
     }
 }

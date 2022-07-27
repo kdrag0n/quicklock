@@ -98,6 +98,6 @@ mD/vFDkzF+wm7cyWpQpCVQ==
 -----END CERTIFICATE-----""",
     ).map {
         val factory = CertificateFactory.getInstance("X.509")
-        factory.generateCertificate(ByteArrayInputStream(it.serializeToByteArray()))
+        factory.generateCertificate(ByteArrayInputStream(it.encodeToByteArray()))
     }
 }

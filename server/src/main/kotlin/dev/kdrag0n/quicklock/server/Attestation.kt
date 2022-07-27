@@ -11,7 +11,7 @@ object Attestation {
     private fun verifyAttestation(cert: X509Certificate, challengeId: String, isDelegation: Boolean = true) {
         val record = ParsedAttestationRecord.createParsedAttestationRecord(cert)
 
-        require(record.attestationChallenge.contentEquals(challengeId.serializeToByteArray()))
+        require(record.attestationChallenge.contentEquals(challengeId.encodeToByteArray()))
         require(record.attestationSecurityLevel == SecurityLevel.STRONG_BOX ||
                 record.attestationSecurityLevel == SecurityLevel.TRUSTED_ENVIRONMENT)
         require(record.keymasterSecurityLevel == SecurityLevel.STRONG_BOX ||

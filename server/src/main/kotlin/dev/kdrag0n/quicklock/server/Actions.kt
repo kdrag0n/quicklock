@@ -52,7 +52,7 @@ fun Application.actionsModule() = routing {
 
     post("/api/unlock/{challengeId}/finish") {
         val id = call.parameters["challengeId"]!!
-        val (publicKey, signature) = call.receive<UnlockFinishRequest>()
+        val (publicKey, _, signature) = call.receive<UnlockFinishRequest>()
 
         val challenge = unlockChallenges[id]!!
         val (_, timestamp, entityId) = challenge

@@ -105,6 +105,7 @@ fun Application.pairingModule() = routing {
                 expiresAt = expiresAt,
                 delegatedBy = delegatedBy,
                 allowedEntities = allowedEntities,
+                blsPublicKeys = null,
             ))
         } finally {
             // Drop challenge
@@ -163,10 +164,11 @@ fun Application.pairingModule() = routing {
 
     post("/api/pair/initial/finish") {
         val req = call.receive<InitialPairFinishRequest>()
+        println("Finish initial pair: $req")
 
         // Verify HMAC
         val secret = initialPairingSecret!!
-        val expectedMac = req.finishPayload.serializeToByteArray().toByteString()
+        val expectedMac = req.finishPayload.encodeToByteArray().toByteString()
             .hmacSha256(secret.decodeBase64().toByteString())
             .toByteArray()
         require(expectedMac cryptoEq req.mac.decodeBase64())
@@ -200,13 +202,15 @@ fun Application.pairingModule() = routing {
         // Raw string, not decoded JSON, to avoid potential formatting differences
         // between Moshi and KotlinX serialization
         val payload = call.receiveChannel().readRemaining().readText()
+        println("Delegated pair finish payload: $payload")
         finishPayloads[id] = payload
         call.respond(EmptyObject)
     }
 
     post("/api/pair/delegated/{challengeId}/finish") {
         val req = call.receive<SignedDelegation>()
-        val (delegatedBy, delegationData, signature) = req
+        println("Finish delegated pair: $req")
+        val (delegatedBy, delegationData, _, signature) = req
         val device = Storage.getDeviceByKey(delegatedBy)
         Crypto.verifySignature(delegationData, device.delegationKey, signature)
 
