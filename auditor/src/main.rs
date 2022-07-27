@@ -80,16 +80,16 @@ async fn sign(req: Json<SignRequest>) -> Result<impl Responder, Error> {
         .ok_or(anyhow!("Unknown device"))?;
 
     // Verify client signature to make sure this client is authorized
-    let client_pk_data = base64::decode(device.client_pk.as_str())?;
-    let client_pk = PublicKey::from_bytes(client_pk_data.as_slice())?;
-    let client_sig = Signature::from_bytes(req.client_sig.as_slice())?;
-    if !client_pk.verify(client_sig, req.message.as_slice()) {
+    let client_pk_data = base64::decode(&device.client_pk)?;
+    let client_pk = PublicKey::from_bytes(&client_pk_data)?;
+    let client_sig = Signature::from_bytes(&req.client_sig)?;
+    if !client_pk.verify(client_sig, &req.message) {
         return Err(anyhow!("Client signature invalid").into());
     }
 
     // Validate payload
     // TODO: reconsider this
-    let challenge: UnlockChallenge = serde_json::from_str(str::from_utf8(req.message.as_slice())?)?;
+    let challenge: UnlockChallenge = serde_json::from_str(str::from_utf8(&req.message)?)?;
     println!("Challenge: {:?}", challenge);
 
     // Log request
@@ -100,10 +100,10 @@ async fn sign(req: Json<SignRequest>) -> Result<impl Responder, Error> {
     });
 
     // Sign payload
-    let sk = PrivateKey::from_bytes(device.server_sk.as_slice())?;
-    let sig = sk.sign(req.message.as_slice());
+    let sk = PrivateKey::from_bytes(&device.server_sk)?;
+    let sig = sk.sign(&req.message);
     // Aggregate signature
-    let agg_sig = bls_signatures::aggregate([sig, client_sig].as_slice())?;
+    let agg_sig = bls_signatures::aggregate(&[sig, client_sig])?;
 
     Ok(Json(SignResponse {
         aggregate_sig: agg_sig.as_bytes(),
@@ -123,7 +123,7 @@ async fn main() -> std::io::Result<()> {
                     .service(sign),
             )
     })
-    .bind(("127.0.0.1", 9001))?
+    .bind(("0.0.0.0", 9001))?
     .run()
     .await
 }

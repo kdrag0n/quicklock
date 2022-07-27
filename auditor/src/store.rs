@@ -66,7 +66,7 @@ impl DataStore {
 }
 
 fn load_data() -> Result<DataStore, io::Error> {
-    let f = File::open("data.json")?;
+    let f = File::open("state.json")?;
     let reader = BufReader::new(f);
     Ok(serde_json::from_reader(reader)?)
 }
