@@ -42,6 +42,7 @@ private data class PairFinishPayload(
     val challengeId: String,
     val publicKey: String,
     val delegationKey: String,
+    val blsPublicKeys: List<String>?,
     val mainAttestationChain: List<String>,
     val delegationAttestationChain: List<String>,
 )
@@ -63,7 +64,8 @@ data class Delegation(
 private data class SignedDelegation(
     val device: String,
     val delegation: String,
-    val signature: String,
+    val blsSignature: String,
+    val ecSignature: String,
 )
 
 fun generateSecret(): String {

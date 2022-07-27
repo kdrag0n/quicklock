@@ -11,6 +11,7 @@ import java.io.FileNotFoundException
 @Serializable
 data class PairedDevice(
     // For normal actions (unlock)
+    // Custom protocol w/ auditing: this is the ECDSA key
     val publicKey: String,
     // For adding a new device. This one requires protected confirmation, verified by attestation
     val delegationKey: String,
@@ -20,6 +21,10 @@ data class PairedDevice(
     val delegatedBy: String?,
     // Null for all
     val allowedEntities: List<String>?,
+
+    // Custom protocol
+    // BLS keys
+    val blsPublicKeys: List<String>?,
 
     // WebAuthn Authenticator object
     val serializedAuthenticator: String? = null,

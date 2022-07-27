@@ -28,7 +28,8 @@ data class UnlockStartRequest(
 data class UnlockFinishRequest(
     // Challenge ID is in URL
     val publicKey: String,
-    val signature: String,
+    val blsSignature: String,
+    val ecSignature: String,
 )
 
 private val logger = LoggerFactory.getLogger("Actions")
