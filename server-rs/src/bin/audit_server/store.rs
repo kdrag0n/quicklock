@@ -6,7 +6,7 @@ use std::sync::{Mutex, MutexGuard};
 use std::time::SystemTime;
 use once_cell::sync::Lazy;
 use serde::{Serialize, Deserialize};
-use crate::serialize::{base64 as serde_b64};
+use qlock::serialize::{base64 as serde_b64};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PairedDevice {
@@ -59,7 +59,7 @@ impl DataStore {
     }
 
     fn persist(&self) {
-        let file = File::create("state.json").unwrap();
+        let file = File::create("state_audit.json").unwrap();
         let mut writer = io::BufWriter::new(file);
         serde_json::to_writer_pretty(&mut writer, &self).unwrap();
     }

@@ -1,18 +1,20 @@
 use qlock::error::Error;
-use qlock::store::{AuthEvent, DataStore, PairedDevice};
-use qlock::serialize::{base64 as serde_b64};
+use qlock::serialize::base64 as serde_b64;
 
 use std::time::SystemTime;
-use actix_web::{post, web, App, HttpServer, Responder};
+use actix_web::{App, HttpServer, post, Responder, web};
 use actix_web::middleware::Logger;
 use actix_web::web::Json;
 use anyhow::anyhow;
 use bls_signatures::{PrivateKey, PublicKey, Serialize as BlsSerialize, Signature};
 use rand::rngs::OsRng;
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 use base64;
 use ulid::Ulid;
 use std::str;
+use crate::store::{AuthEvent, DataStore, PairedDevice};
+
+mod store;
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -42,14 +44,6 @@ struct SignRequest {
 struct SignResponse {
     #[serde(with="serde_b64")]
     aggregate_sig: Vec<u8>,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct UnlockChallenge {
-    id: String,
-    timestamp: u64,
-    entity_id: String,
 }
 
 #[post("register")]
@@ -83,11 +77,6 @@ async fn sign(req: Json<SignRequest>) -> Result<impl Responder, Error> {
     if !client_pk.verify(client_sig, &req.message) {
         return Err(anyhow!("Client signature invalid").into());
     }
-
-    // Validate payload
-    // TODO: reconsider this
-    let challenge: UnlockChallenge = serde_json::from_str(str::from_utf8(&req.message)?)?;
-    println!("Challenge: {:?}", challenge);
 
     // Log request
     DataStore::get().log_event(&device.client_pk, AuthEvent {
