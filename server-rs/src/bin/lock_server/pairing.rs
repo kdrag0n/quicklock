@@ -16,7 +16,7 @@ use serde::{Serialize, Deserialize};
 use qlock::time::now;
 use crate::attestation::verify_chain;
 use crate::CONFIG;
-use crate::crypto::{generate_secret, verify_signature_str};
+use crate::crypto::{generate_secret, verify_bls_signature_str, verify_ec_signature_str};
 
 lazy_static! {
     static ref PAIRING_CHALLENGES: DashMap<String, PairingChallenge> = DashMap::new();
@@ -202,7 +202,11 @@ async fn finish_delegated(
     println!("Finish delegated pair: {:?}", req);
     let device = STORE.get_device(&req.device)
         .ok_or(anyhow!("Device not found"))?;
-    verify_signature_str(&req.delegation, &device.delegation_key, &req.ec_signature)?;
+    verify_ec_signature_str(&req.delegation, &device.delegation_key, &req.ec_signature)?;
+
+    if let Some(bls_keys) = device.bls_public_keys {
+        verify_bls_signature_str(&req.delegation, &bls_keys, &req.bls_signature)?;
+    }
 
     let del: Delegation = serde_json::from_str(&req.delegation)?;
 
@@ -235,7 +239,6 @@ async fn get_challenge() -> impl IntoResponse {
     };
 
     PAIRING_CHALLENGES.insert(challenge.id.clone(), challenge.clone());
-    println!("challenge = {:?}", challenge);
     Json(challenge)
 }
 

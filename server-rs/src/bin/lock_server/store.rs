@@ -36,8 +36,8 @@ pub struct DataStore {
 pub static STORE: Lazy<DataStore> = Lazy::new(|| DataStore::new());
 
 impl DataStore {
-    fn new() -> DataStore {
-        load_data().unwrap_or(DataStore {
+    fn new() -> Self {
+        load_data().unwrap_or(Self {
             devices: DashMap::new(),
         })
     }

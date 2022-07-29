@@ -1,10 +1,13 @@
 use anyhow::anyhow;
+use bls_signatures::{PublicKey, Serialize, Signature};
 use ring::{signature};
 use ring::signature::UnparsedPublicKey;
 use spki::SubjectPublicKeyInfo;
+use qlock::bls::verify_aug;
+use qlock::checks::require;
 use qlock::error::AppResult;
 
-pub fn verify_signature_str(data: &str, public_key: &str, signature: &str) -> AppResult<()> {
+pub fn verify_ec_signature_str(data: &str, public_key: &str, signature: &str) -> AppResult<()> {
     let pk = base64::decode(public_key)?;
     let pk = SubjectPublicKeyInfo::try_from(pk.as_slice())
         .map_err(|_| anyhow!("Invalid public key"))?;
@@ -14,6 +17,38 @@ pub fn verify_signature_str(data: &str, public_key: &str, signature: &str) -> Ap
 
     pk.verify(data.as_bytes(), &base64::decode(signature)?)
         .map_err(|_| anyhow!("Signature verify failed"))?;
+
+    Ok(())
+}
+
+pub fn verify_bls_signature_str(data: &str, public_keys: &[String], signature: &str) -> AppResult<()> {
+    let sig = Signature::from_bytes(&base64::decode(signature)?)?;
+    let pks_data = public_keys.iter()
+        .map(|pk| base64::decode(pk))
+        .collect::<Result<Vec<_>, _>>()?;
+    let pks = pks_data.iter()
+        .map(|pk| PublicKey::from_bytes(&pk))
+        .collect::<Result<Vec<_>, _>>()?;
+
+    // Prepend each pk to message
+    // let messages = pks_data.iter()
+    //     .map(|pk| {
+    //         let mut msg = pk.clone();
+    //         msg.extend_from_slice(data.as_bytes());
+    //         msg
+    //     })
+    //     .collect::<Vec<_>>();
+    // let msg_refs = messages.iter()
+    //     .map(|msg| msg.as_slice())
+    //     .collect::<Vec<_>>();
+
+    println!("pk0 = {}", base64::encode(&pks[0].as_bytes()));
+    println!("pk1 = {}", base64::encode(&pks[1].as_bytes()));
+    println!("agg sig dbg: {:?}", sig);
+    println!("pk0 dbg = {:?}", pks[0]);
+    println!("pk1 dbg = {:?}", pks[1]);
+    // require(bls_signatures::verify_messages(&sig, &msg_refs, &pks))?;
+    require(verify_aug(&sig, data.as_bytes(), &pks))?;
 
     Ok(())
 }

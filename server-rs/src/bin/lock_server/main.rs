@@ -6,8 +6,6 @@ use axum::response::IntoResponse;
 use axum::routing::get;
 use tower_http::trace::TraceLayer;
 use qlock::log;
-
-use config::CONFIG;
 use qlock::log::print_request_response;
 
 mod config;
@@ -19,8 +17,17 @@ mod crypto;
 mod actions;
 mod homeassistant;
 
+use config::CONFIG;
+
 async fn get_entities() -> impl IntoResponse {
     Json(CONFIG.entities.values().collect::<Vec<_>>())
+}
+
+pub fn service() -> Router {
+    Router::new()
+        .route("/api/entity", get(get_entities))
+        .nest("/api/pair", pairing::service())
+        .nest("/api/unlock", actions::service())
 }
 
 #[tokio::main]
@@ -28,9 +35,8 @@ async fn main() {
     log::init();
 
     let app = Router::new()
-        .route("/api/entity", get(get_entities))
-        .nest("/api/pair", pairing::service())
-        .nest("/api/unlock", actions::service())
+        .merge(service())
+        .merge(qlock::audit::service())
         .layer(TraceLayer::new_for_http())
         .layer(middleware::from_fn(print_request_response));
 

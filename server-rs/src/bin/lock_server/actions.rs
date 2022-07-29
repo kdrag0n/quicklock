@@ -13,7 +13,7 @@ use tokio::time::sleep;
 use qlock::checks::require;
 use qlock::time::now;
 use crate::{CONFIG, homeassistant};
-use crate::crypto::generate_secret;
+use crate::crypto::{generate_secret, verify_bls_signature_str, verify_ec_signature_str};
 use crate::store::{STORE};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -69,8 +69,15 @@ async fn finish_unlock(
     let (_, challenge) = UNLOCK_CHALLENGES.remove(&id)
         .ok_or(anyhow!("Challenge not found"))?;
 
-    STORE.get_device_for_entity(&req.public_key, &challenge.entity_id)
+    let device = STORE.get_device_for_entity(&req.public_key, &challenge.entity_id)
         .ok_or(anyhow!("Device not found or not allowed"))?;
+    let challenge_str = serde_json::to_string(&challenge)?;
+    println!("verify for: {}", challenge_str);
+    verify_ec_signature_str(&challenge_str, &device.public_key, &req.ec_signature)?;
+
+    if let Some(bls_keys) = device.bls_public_keys {
+        verify_bls_signature_str(&challenge_str, &bls_keys, &req.bls_signature)?;
+    }
 
     // Verify timestamp
     require((now() - challenge.timestamp) <= CONFIG.time_grace_period)?;

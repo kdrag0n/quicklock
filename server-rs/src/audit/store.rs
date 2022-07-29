@@ -5,7 +5,8 @@ use std::time::SystemTime;
 use dashmap::DashMap;
 use once_cell::sync::Lazy;
 use serde::{Serialize, Deserialize};
-use qlock::serialize::{base64 as serde_b64};
+use tracing::{debug};
+use crate::serialize::{base64 as serde_b64};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PairedDevice {
@@ -31,8 +32,8 @@ pub struct DataStore {
 pub static STORE: Lazy<DataStore> = Lazy::new(|| DataStore::create());
 
 impl DataStore {
-    fn create() -> DataStore {
-        load_data().unwrap_or(DataStore {
+    fn create() -> Self {
+        load_data().unwrap_or(Self {
             devices: DashMap::new(),
             logs: DashMap::new(),
         })
@@ -48,8 +49,12 @@ impl DataStore {
     }
 
     pub fn log_event(&self, device_id: &String, event: AuthEvent) {
-        let mut entries = self.logs.entry(device_id.clone()).or_default();
-        entries.push(event);
+        debug!("Log event: {:?}", event);
+        // Persist needs the lock
+        {
+            let mut entries = self.logs.entry(device_id.clone()).or_default();
+            entries.push(event);
+        }
         self.persist();
     }
 
@@ -61,7 +66,7 @@ impl DataStore {
 }
 
 fn load_data() -> Result<DataStore, io::Error> {
-    let f = File::open("state.json")?;
+    let f = File::open("state_audit.json")?;
     let reader = BufReader::new(f);
     Ok(serde_json::from_reader(reader)?)
 }

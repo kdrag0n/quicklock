@@ -1,6 +1,6 @@
 use std::net::SocketAddr;
-use qlock::error::{AppResult};
-use qlock::serialize::base64 as serde_b64;
+use crate::error::AppResult;
+use crate::serialize::base64 as serde_b64;
 
 use std::time::SystemTime;
 use anyhow::anyhow;
@@ -11,11 +11,14 @@ use base64;
 use ulid::Ulid;
 use std::str;
 use std::str::FromStr;
-use axum::{Json, Router};
+use axum::{Json, middleware, Router};
 use axum::response::IntoResponse;
 use axum::routing::post;
-use qlock::log;
-use crate::store::{AuthEvent, PairedDevice, STORE};
+use tower_http::trace::TraceLayer;
+use crate::log;
+use crate::log::print_request_response;
+use crate::audit::store::{AuthEvent, PairedDevice, STORE};
+use crate::bls::{sign_aug, verify_aug};
 
 mod store;
 
@@ -75,7 +78,8 @@ async fn sign(req: Json<SignRequest>) -> AppResult<impl IntoResponse> {
     let client_pk_data = base64::decode(&device.client_pk)?;
     let client_pk = PublicKey::from_bytes(&client_pk_data)?;
     let client_sig = Signature::from_bytes(&req.client_sig)?;
-    if !client_pk.verify(client_sig, &req.message) {
+    println!("aug signature: {:?}", base64::encode(&req.client_sig));
+    if !verify_aug(&client_sig, &req.message, &[client_pk]) {
         return Err(anyhow!("Client signature invalid").into());
     }
 
@@ -88,26 +92,33 @@ async fn sign(req: Json<SignRequest>) -> AppResult<impl IntoResponse> {
 
     // Sign payload
     let sk = PrivateKey::from_bytes(&device.server_sk)?;
-    let sig = sk.sign(&req.message);
+    println!("sign for: {}", std::str::from_utf8(&req.message)?);
+    let sig = sign_aug(&sk, &req.message);
     // Aggregate signature
-    let agg_sig = bls_signatures::aggregate(&[sig, client_sig])?;
+    println!("client pk = {}", base64::encode(client_pk.as_bytes()));
+    println!("server pk = {}", base64::encode(sk.public_key().as_bytes()));
+    let agg_sig = bls_signatures::aggregate(&[client_sig, sig])?;
+    println!("Agg sig dbg: {:?}", agg_sig);
+    println!("pk client dbg: {:?}", client_pk);
+    println!("pk server dbg: {:?}", sk.public_key());
 
+    // self verify
+    println!("self verify1 c = {}",
+             bls_signatures::verify_messages(&client_sig, &[req.message.as_slice()], &[client_pk]));
+    println!("self verify1 s = {}",
+                bls_signatures::verify_messages(&sig, &[req.message.as_slice()], &[sk.public_key()]));
+    println!("self verify = {}",
+             verify_aug(&agg_sig, &req.message, &[client_pk, sk.public_key()]));
+
+    //
+    println!("Agg sig dat = {}", base64::encode(agg_sig.as_bytes()));
     Ok(Json(SignResponse {
         aggregate_sig: agg_sig.as_bytes(),
     }))
 }
 
-#[tokio::main]
-async fn main() {
-    log::init();
-
-    let app = Router::new()
+pub fn service() -> Router {
+    Router::new()
         .route("/api/register", post(register))
-        .route("/api/sign", post(sign));
-
-    let addr = SocketAddr::from_str("0.0.0.0:9001").unwrap();
-    axum::Server::bind(&addr)
-        .serve(app.into_make_service())
-        .await
-        .unwrap();
+        .route("/api/sign", post(sign))
 }

@@ -9,7 +9,7 @@ pub fn init() {
     tracing_subscriber::registry()
         .with(tracing_subscriber::EnvFilter::new(
             std::env::var("RUST_LOG")
-                .unwrap_or_else(|_| "tower_http=debug,lock_server=debug,audit_server=debug".into()),
+                .unwrap_or_else(|_| "info,tower_http=debug,lock_server=debug,audit_server=debug".into()),
         ))
         .with(tracing_subscriber::fmt::layer())
         .init();
