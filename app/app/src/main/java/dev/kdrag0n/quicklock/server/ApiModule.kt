@@ -27,7 +27,7 @@ object ApiModule {
     @Provides
     @Reusable
     fun provideAuditService(moshi: Moshi) = Retrofit.Builder().run {
-        baseUrl("http://192.168.20.127:9001/")
+        baseUrl("http://192.168.20.127:3002/")
         addConverterFactory(MoshiConverterFactory.create(moshi))
         build()
     }.create(AuditService::class.java)
