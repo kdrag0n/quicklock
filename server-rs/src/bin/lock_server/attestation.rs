@@ -1,5 +1,4 @@
 use std::fmt::Debug;
-use std::time::{SystemTime, UNIX_EPOCH};
 use anyhow::anyhow;
 use x509_parser::der_parser::oid;
 use x509_parser::prelude::{FromDer, X509Certificate};

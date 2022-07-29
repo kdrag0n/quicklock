@@ -1,6 +1,7 @@
 pub mod error;
 pub mod serialize;
 pub mod checks;
+pub mod log;
 
 pub mod time {
     use std::time::{SystemTime, UNIX_EPOCH};

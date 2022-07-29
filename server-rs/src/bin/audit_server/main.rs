@@ -1,5 +1,5 @@
 use std::net::SocketAddr;
-use qlock::error::{AppResult, Error};
+use qlock::error::{AppResult};
 use qlock::serialize::base64 as serde_b64;
 
 use std::time::SystemTime;
@@ -14,6 +14,7 @@ use std::str::FromStr;
 use axum::{Json, Router};
 use axum::response::IntoResponse;
 use axum::routing::post;
+use qlock::log;
 use crate::store::{AuthEvent, DataStore, PairedDevice};
 
 mod store;
@@ -98,7 +99,7 @@ async fn sign(req: Json<SignRequest>) -> AppResult<impl IntoResponse> {
 
 #[tokio::main]
 async fn main() {
-    pretty_env_logger::init();
+    log::init();
 
     let app = Router::new()
         .route("/api/register", post(register))

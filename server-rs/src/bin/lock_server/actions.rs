@@ -1,8 +1,6 @@
 use lazy_static::lazy_static;
 use qlock::error::AppResult;
 use serde::{Deserialize, Serialize};
-use std::sync::{Arc, Mutex};
-use std::collections::HashMap;
 use std::time::Duration;
 use anyhow::anyhow;
 use axum::{Extension, Json, Router};
@@ -10,13 +8,13 @@ use axum::extract::Path;
 use axum::response::IntoResponse;
 use axum::routing::post;
 use dashmap::DashMap;
-use log::{error, info};
+use tracing::{error, info};
 use tokio::time::sleep;
 use qlock::checks::require;
 use qlock::time::now;
 use crate::{CONFIG, homeassistant};
 use crate::crypto::generate_secret;
-use crate::store::{DataStore, STORE};
+use crate::store::{STORE};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
