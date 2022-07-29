@@ -101,7 +101,25 @@ fn finish_pair(
     // Verify delegation attestation and certificate chain
     verify_chain(&req.delegation_attestation_chain, &challenge.id, true)?;
 
-    DataStore::get().add_device(PairedDevice {
+    let mut store = DataStore::get();
+    // Only allow entities that delegator has access to
+    let allowed_entities = match delegated_by {
+        Some(ref delegator) => allowed_entities
+            // Filter allowed list if given
+            .map(|entities| {
+                entities.into_iter()
+                    .filter(|e| store.get_device_for_entity(delegator, e).is_some())
+                    .collect()
+            })
+            // Otherwise limit to delegator's allowed list
+            .or_else(|| store.get_device(delegator)
+                .map(|d| d.allowed_entities)
+                .flatten())
+        ,
+        None => allowed_entities,
+    };
+
+    store.add_device(PairedDevice {
         public_key: req.public_key.clone(),
         delegation_key: req.delegation_key.clone(),
         bls_public_keys: req.bls_public_keys.clone(),
