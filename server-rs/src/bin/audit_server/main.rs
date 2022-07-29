@@ -1,10 +1,8 @@
-use qlock::error::Error;
+use std::net::SocketAddr;
+use qlock::error::{AppResult, Error};
 use qlock::serialize::base64 as serde_b64;
 
 use std::time::SystemTime;
-use actix_web::{App, HttpServer, post, Responder, web};
-use actix_web::middleware::Logger;
-use actix_web::web::Json;
 use anyhow::anyhow;
 use bls_signatures::{PrivateKey, PublicKey, Serialize as BlsSerialize, Signature};
 use rand::rngs::OsRng;
@@ -12,6 +10,10 @@ use serde::{Deserialize, Serialize};
 use base64;
 use ulid::Ulid;
 use std::str;
+use std::str::FromStr;
+use axum::{Json, Router};
+use axum::response::IntoResponse;
+use axum::routing::post;
 use crate::store::{AuthEvent, DataStore, PairedDevice};
 
 mod store;
@@ -46,8 +48,7 @@ struct SignResponse {
     aggregate_sig: Vec<u8>,
 }
 
-#[post("register")]
-async fn register(req: Json<RegisterRequest>) -> Result<impl Responder, Error> {
+async fn register(req: Json<RegisterRequest>) -> AppResult<impl IntoResponse> {
     println!("Register: {:?}", req);
 
     // Generate server private key for this device
@@ -63,8 +64,7 @@ async fn register(req: Json<RegisterRequest>) -> Result<impl Responder, Error> {
     }))
 }
 
-#[post("sign")]
-async fn sign(req: Json<SignRequest>) -> Result<impl Responder, Error> {
+async fn sign(req: Json<SignRequest>) -> AppResult<impl IntoResponse> {
     println!("Sign: {:?}", req);
 
     let device = DataStore::get().get_device(&req.client_pk)
@@ -96,20 +96,17 @@ async fn sign(req: Json<SignRequest>) -> Result<impl Responder, Error> {
     }))
 }
 
-#[actix_web::main]
-async fn main() -> std::io::Result<()> {
+#[tokio::main]
+async fn main() {
     pretty_env_logger::init();
 
-    HttpServer::new(|| {
-        App::new()
-            .wrap(Logger::default())
-            .service(
-                web::scope("/api")
-                    .service(register)
-                    .service(sign),
-            )
-    })
-    .bind(("0.0.0.0", 9001))?
-    .run()
-    .await
+    let app = Router::new()
+        .route("/api/register", post(register))
+        .route("/api/sign", post(sign));
+
+    let addr = SocketAddr::from_str("0.0.0.0:9001").unwrap();
+    axum::Server::bind(&addr)
+        .serve(app.into_make_service())
+        .await
+        .unwrap();
 }

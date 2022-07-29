@@ -1,15 +1,17 @@
-use actix_web::{web, Scope, Responder, post};
-use actix_web::web::{Data, Json, Path};
 use lazy_static::lazy_static;
 use qlock::error::AppResult;
 use serde::{Deserialize, Serialize};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use std::collections::HashMap;
 use std::time::Duration;
 use anyhow::anyhow;
+use axum::{Extension, Json, Router};
+use axum::extract::Path;
+use axum::response::IntoResponse;
+use axum::routing::post;
 use dashmap::DashMap;
-use futures_timer::Delay;
 use log::{error, info};
+use tokio::time::sleep;
 use qlock::checks::require;
 use qlock::time::now;
 use crate::{CONFIG, homeassistant};
@@ -43,8 +45,7 @@ lazy_static! {
     static ref UNLOCK_CHALLENGES: DashMap<String, UnlockChallenge> = DashMap::new();
 }
 
-#[post("start")]
-async fn start_unlock(req: Json<UnlockStartRequest>) -> AppResult<impl Responder> {
+async fn start_unlock(req: Json<UnlockStartRequest>) -> AppResult<impl IntoResponse> {
     println!("Start unlock: {:?}", req);
 
     CONFIG.entities.get(&req.entity_id)
@@ -60,15 +61,13 @@ async fn start_unlock(req: Json<UnlockStartRequest>) -> AppResult<impl Responder
     Ok(Json(challenge))
 }
 
-#[post("{challenge_id}/finish")]
 async fn finish_unlock(
     req: Json<UnlockFinishRequest>,
-    path: Path<(String,)>,
-    client: Data<awc::Client>,
-) -> AppResult<impl Responder> {
+    Path(id): Path<String>,
+    client: Extension<reqwest::Client>,
+) -> AppResult<impl IntoResponse> {
     println!("Finish unlock: {:?}", req);
 
-    let (id,) = path.into_inner();
     let (_, challenge) = UNLOCK_CHALLENGES.remove(&id)
         .ok_or(anyhow!("Challenge not found"))?;
 
@@ -83,8 +82,8 @@ async fn finish_unlock(
     homeassistant::post_lock(&client, true, &challenge.entity_id).await?;
 
     // Re-lock after delay
-    actix_rt::spawn(async move {
-        Delay::new(Duration::from_millis(CONFIG.relock_delay)).await;
+    tokio::spawn(async move {
+        sleep(Duration::from_millis(CONFIG.relock_delay)).await;
         info!("Posting HA lock");
         if let Err(e) = homeassistant::post_lock(&client, false, &challenge.entity_id).await {
             error!("Failed to re-lock: {}", e);
@@ -94,14 +93,11 @@ async fn finish_unlock(
     Ok(Json(()))
 }
 
-pub fn service() -> Scope {
-    let client = awc::ClientBuilder::new()
-        .add_default_header(("Content-Type", "application/json"))
-        .add_default_header(("Authorization", format!("Bearer {}", CONFIG.ha_api_key)))
-        .finish();
+pub fn service() -> Router {
+    let client = reqwest::Client::new();
 
-    web::scope("unlock")
-        .app_data(Data::new(client))
-        .service(start_unlock)
-        .service(finish_unlock)
+    Router::new()
+        .route("/start", post(start_unlock))
+        .route("/:challenge_id/finish", post(finish_unlock))
+        .layer(Extension(client))
 }

@@ -1,8 +1,11 @@
 use std::collections::HashMap;
 use std::process::Command;
-use actix_web::{Scope, web, get, post, Responder, HttpRequest};
-use actix_web::web::{Json, Path, Query};
 use anyhow::anyhow;
+use axum::response::IntoResponse;
+use axum::{Json, Router};
+use axum::extract::Path;
+use axum::http::StatusCode;
+use axum::routing::{get, post};
 use dashmap::DashMap;
 use lazy_static::lazy_static;
 use parking_lot::Mutex;
@@ -135,8 +138,7 @@ fn finish_pair(
 /*
  * Initial
  */
-#[post("initial/start")]
-async fn start_initial() -> AppResult<impl Responder> {
+async fn start_initial() -> AppResult<impl IntoResponse> {
     // Only for initial setup
     require(!STORE.has_paired_devices())?;
     require(INITIAL_PAIRING_SECRET.lock().is_none())?;
@@ -157,8 +159,7 @@ async fn start_initial() -> AppResult<impl Responder> {
     Ok(Json(()))
 }
 
-#[post("initial/finish")]
-async fn finish_initial(req: Json<InitialPairFinishRequest>) -> AppResult<impl Responder> {
+async fn finish_initial(req: Json<InitialPairFinishRequest>) -> AppResult<impl IntoResponse> {
     println!("Finish initial pair: {:?}", req);
 
     // Verify HMAC
@@ -177,21 +178,17 @@ async fn finish_initial(req: Json<InitialPairFinishRequest>) -> AppResult<impl R
 /*
  * Delegation
  */
-#[get("delegated/{challenge_id}/finish_payload")]
-async fn get_finish_payload(path: Path<(String,)>) -> AppResult<impl Responder> {
-    let (challenge_id,) = path.into_inner();
+async fn get_finish_payload(Path(challenge_id): Path<String>) -> AppResult<impl IntoResponse> {
     let payload = FINISH_PAYLOADS.get(&challenge_id)
         .map(|p| p.clone())
         .ok_or(HttpError::NotFound)?;
     Ok(payload)
 }
 
-#[post("delegated/{challenge_id}/finish_payload")]
 async fn post_finish_payload(
-    path: Path<(String,)>,
+    Path(id): Path<String>,
     payload: String,
-) -> AppResult<impl Responder> {
-    let (id,) = path.into_inner();
+) -> AppResult<impl IntoResponse> {
     require(PAIRING_CHALLENGES.contains_key(&id))?;
     require(!FINISH_PAYLOADS.contains_key(&id))?;
 
@@ -201,11 +198,10 @@ async fn post_finish_payload(
     Ok(Json(()))
 }
 
-#[post("delegated/{challenge_id}/finish")]
 async fn finish_delegated(
-    path: Path<(String,)>,
+    Path(id): Path<String>,
     req: Json<SignedDelegation>,
-) -> AppResult<impl Responder> {
+) -> AppResult<impl IntoResponse> {
     println!("Finish delegated pair: {:?}", req);
     let device = STORE.get_device(&req.device)
         .ok_or(anyhow!("Device not found"))?;
@@ -214,7 +210,6 @@ async fn finish_delegated(
     let del: Delegation = serde_json::from_str(&req.delegation)?;
 
     // Prevent delegator from changing request
-    let (id,) = path.into_inner();
     {
         let orig_payload = FINISH_PAYLOADS.get(&id)
             .ok_or(HttpError::NotFound)?;
@@ -235,8 +230,7 @@ async fn finish_delegated(
 /*
  * Common
  */
-#[post("get_challenge")]
-async fn get_challenge() -> AppResult<impl Responder> {
+async fn get_challenge() -> impl IntoResponse {
     let challenge = PairingChallenge {
         id: generate_secret(),
         timestamp: now(),
@@ -245,15 +239,15 @@ async fn get_challenge() -> AppResult<impl Responder> {
 
     PAIRING_CHALLENGES.insert(challenge.id.clone(), challenge.clone());
     println!("challenge = {:?}", challenge);
-    Ok(Json(challenge))
+    Json(challenge)
 }
 
-pub fn service() -> Scope {
-    web::scope("/pair")
-        .service(start_initial)
-        .service(finish_initial)
-        .service(get_finish_payload)
-        .service(post_finish_payload)
-        .service(finish_delegated)
-        .service(get_challenge)
+pub fn service() -> Router {
+    Router::new()
+        .route("/initial/start", post(start_initial))
+        .route("/initial/finish", post(finish_initial))
+        .route("/delegated/:challenge_id/finish_payload", get(get_finish_payload))
+        .route("/delegated/:challenge_id/finish_payload", post(post_finish_payload))
+        .route("/delegated/:challenge_id/finish", post(finish_delegated))
+        .route("/get_challenge", post(get_challenge))
 }

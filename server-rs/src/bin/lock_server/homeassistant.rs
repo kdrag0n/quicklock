@@ -2,7 +2,9 @@ use anyhow::anyhow;
 use qlock::error::AppResult;
 use crate::CONFIG;
 use std::str;
-pub async fn post_lock(client: &awc::Client, unlocked: bool, entity_id: &str) -> AppResult<()> {
+use reqwest::Client;
+
+pub async fn post_lock(client: &Client, unlocked: bool, entity_id: &str) -> AppResult<()> {
     let service = if unlocked { "unlock" } else { "lock" };
     let entity = CONFIG.entities.get(entity_id)
         .ok_or(anyhow!("Entity not found"))?;
@@ -12,7 +14,9 @@ pub async fn post_lock(client: &awc::Client, unlocked: bool, entity_id: &str) ->
     });
 
     let resp = client.post(format!("http://192.168.20.137:8123/api/services/lock/{}", service))
-        .send_json(&req)
+        .header("Authorization", format!("Bearer {}", CONFIG.ha_api_key))
+        .json(&req)
+        .send()
         .await
         .map_err(|_| anyhow!("Failed to call lock service"))?;
 

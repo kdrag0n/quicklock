@@ -1,6 +1,8 @@
 use std::fmt::{Display, Formatter};
-use actix_web::http::StatusCode;
-use actix_web::{Responder, ResponseError};
+use axum::http::StatusCode;
+use axum::Json;
+use axum::response::{IntoResponse, Response};
+use serde_json::json;
 
 #[derive(Debug)]
 pub struct Error(anyhow::Error);
@@ -19,13 +21,19 @@ impl Display for Error {
     }
 }
 
-impl ResponseError for Error {
-    fn status_code(&self) -> StatusCode {
-        match self.0.downcast_ref() {
-            Some(HttpError::NotFound) => StatusCode::NOT_FOUND,
-            Some(HttpError::BadRequest) => StatusCode::BAD_REQUEST,
-            _ => StatusCode::INTERNAL_SERVER_ERROR,
-        }
+impl IntoResponse for Error {
+    fn into_response(self) -> Response {
+        let (status, message) = match self.0.downcast_ref() {
+            Some(HttpError::NotFound) => (StatusCode::NOT_FOUND, "not found"),
+            Some(HttpError::BadRequest) => (StatusCode::BAD_REQUEST, "bad request"),
+            _ => (StatusCode::INTERNAL_SERVER_ERROR, "internal server error"),
+        };
+
+        let body = Json(json!({
+            "error": message,
+        }));
+
+        (status, body).into_response()
     }
 }
 
