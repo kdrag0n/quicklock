@@ -34,3 +34,6 @@ x509-parser = { version = "0.14.0", features = ["verify"] }
 [profile.release-lto]
 inherits = "release"
 lto = true
+
+[profile.dev]
+debug = 1
