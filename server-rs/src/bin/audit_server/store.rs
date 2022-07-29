@@ -1,9 +1,8 @@
-use std::collections::HashMap;
 use std::fs::File;
 use std::io;
 use std::io::BufReader;
-use std::sync::{Mutex, MutexGuard};
 use std::time::SystemTime;
+use dashmap::DashMap;
 use once_cell::sync::Lazy;
 use serde::{Serialize, Deserialize};
 use qlock::serialize::{base64 as serde_b64};
@@ -25,25 +24,21 @@ pub struct AuthEvent {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct DataStore {
-    devices: HashMap<String, PairedDevice>,
-    logs: HashMap<String, Vec<AuthEvent>>,
+    devices: DashMap<String, PairedDevice>,
+    logs: DashMap<String, Vec<AuthEvent>>,
 }
 
-static STORE: Lazy<Mutex<DataStore>> = Lazy::new(|| Mutex::new(DataStore::create()));
+pub static STORE: Lazy<DataStore> = Lazy::new(|| DataStore::create());
 
 impl DataStore {
-    pub fn get() -> MutexGuard<'static, DataStore> {
-        STORE.lock().unwrap()
-    }
-
     fn create() -> DataStore {
         load_data().unwrap_or(DataStore {
-            devices: HashMap::new(),
-            logs: HashMap::new(),
+            devices: DashMap::new(),
+            logs: DashMap::new(),
         })
     }
 
-    pub fn add_device(&mut self, device: PairedDevice) {
+    pub fn add_device(&self, device: PairedDevice) {
         self.devices.insert(device.client_pk.clone(), device);
         self.persist();
     }
@@ -52,8 +47,8 @@ impl DataStore {
         self.devices.get(public_key).map(|d| d.clone())
     }
 
-    pub fn log_event(&mut self, device_id: &String, event: AuthEvent) {
-        let entries = self.logs.entry(device_id.clone()).or_default();
+    pub fn log_event(&self, device_id: &String, event: AuthEvent) {
+        let mut entries = self.logs.entry(device_id.clone()).or_default();
         entries.push(event);
         self.persist();
     }

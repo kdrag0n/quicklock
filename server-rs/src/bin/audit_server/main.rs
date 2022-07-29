@@ -15,7 +15,7 @@ use axum::{Json, Router};
 use axum::response::IntoResponse;
 use axum::routing::post;
 use qlock::log;
-use crate::store::{AuthEvent, DataStore, PairedDevice};
+use crate::store::{AuthEvent, PairedDevice, STORE};
 
 mod store;
 
@@ -54,7 +54,7 @@ async fn register(req: Json<RegisterRequest>) -> AppResult<impl IntoResponse> {
 
     // Generate server private key for this device
     let sk = PrivateKey::generate(&mut OsRng);
-    DataStore::get().add_device(PairedDevice {
+    STORE.add_device(PairedDevice {
         client_pk: req.client_pk.clone(),
         server_sk: sk.as_bytes(),
     });
@@ -68,7 +68,7 @@ async fn register(req: Json<RegisterRequest>) -> AppResult<impl IntoResponse> {
 async fn sign(req: Json<SignRequest>) -> AppResult<impl IntoResponse> {
     println!("Sign: {:?}", req);
 
-    let device = DataStore::get().get_device(&req.client_pk)
+    let device = STORE.get_device(&req.client_pk)
         .ok_or(anyhow!("Unknown device"))?;
 
     // Verify client signature to make sure this client is authorized
@@ -80,7 +80,7 @@ async fn sign(req: Json<SignRequest>) -> AppResult<impl IntoResponse> {
     }
 
     // Log request
-    DataStore::get().log_event(&device.client_pk, AuthEvent {
+    STORE.log_event(&device.client_pk, AuthEvent {
         id: Ulid::new().into(),
         timestamp: SystemTime::now(),
         payload: req.message.clone(),
