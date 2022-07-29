@@ -7,13 +7,14 @@ use std::sync::Mutex;
 use std::collections::HashMap;
 use std::time::Duration;
 use anyhow::anyhow;
+use dashmap::DashMap;
 use futures_timer::Delay;
 use log::{error, info};
 use qlock::checks::require;
 use qlock::time::now;
 use crate::{CONFIG, homeassistant};
 use crate::crypto::generate_secret;
-use crate::store::DataStore;
+use crate::store::{DataStore, STORE};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -39,7 +40,7 @@ struct UnlockFinishRequest {
 }
 
 lazy_static! {
-    static ref UNLOCK_CHALLENGES: Mutex<HashMap<String, UnlockChallenge>> = Mutex::new(HashMap::new());
+    static ref UNLOCK_CHALLENGES: DashMap<String, UnlockChallenge> = DashMap::new();
 }
 
 #[post("start")]
@@ -54,7 +55,7 @@ async fn start_unlock(req: Json<UnlockStartRequest>) -> AppResult<impl Responder
         timestamp: now(),
         entity_id: req.entity_id.clone(),
     };
-    UNLOCK_CHALLENGES.lock().unwrap().insert(challenge.id.clone(), challenge.clone());
+    UNLOCK_CHALLENGES.insert(challenge.id.clone(), challenge.clone());
 
     Ok(Json(challenge))
 }
@@ -68,10 +69,10 @@ async fn finish_unlock(
     println!("Finish unlock: {:?}", req);
 
     let (id,) = path.into_inner();
-    let challenge = UNLOCK_CHALLENGES.lock().unwrap().remove(&id)
+    let (_, challenge) = UNLOCK_CHALLENGES.remove(&id)
         .ok_or(anyhow!("Challenge not found"))?;
 
-    DataStore::get().get_device_for_entity(&req.public_key, &challenge.entity_id)
+    STORE.get_device_for_entity(&req.public_key, &challenge.entity_id)
         .ok_or(anyhow!("Device not found or not allowed"))?;
 
     // Verify timestamp

@@ -1,15 +1,16 @@
 use std::collections::HashMap;
 use std::process::Command;
-use std::sync::Mutex;
 use actix_web::{Scope, web, get, post, Responder, HttpRequest};
 use actix_web::web::{Json, Path, Query};
 use anyhow::anyhow;
+use dashmap::DashMap;
 use lazy_static::lazy_static;
+use parking_lot::Mutex;
 use qrcode::QrCode;
 use qrcode::render::unicode::{Canvas1x2, Dense1x2};
 use ring::hmac;
 use qlock::checks::require;
-use crate::store::{DataStore, PairedDevice};
+use crate::store::{DataStore, PairedDevice, STORE};
 use qlock::error::{AppResult, Error, HttpError};
 use serde::{Serialize, Deserialize};
 use qlock::time::now;
@@ -18,8 +19,8 @@ use crate::CONFIG;
 use crate::crypto::{generate_secret, verify_signature_str};
 
 lazy_static! {
-    static ref PAIRING_CHALLENGES: Mutex<HashMap<String, PairingChallenge>> = Mutex::new(HashMap::new());
-    static ref FINISH_PAYLOADS: Mutex<HashMap<String, String>> = Mutex::new(HashMap::new());
+    static ref PAIRING_CHALLENGES: DashMap<String, PairingChallenge> = DashMap::new();
+    static ref FINISH_PAYLOADS: DashMap<String, String> = DashMap::new();
     static ref INITIAL_PAIRING_SECRET: Mutex<Option<String>> = Mutex::new(None);
 }
 
@@ -84,11 +85,11 @@ fn finish_pair(
     expires_at: u64,
     allowed_entities: Option<Vec<String>>,
 ) -> Result<(), Error> {
-    let challenge = PAIRING_CHALLENGES.lock().unwrap().remove(&req.challenge_id)
-        .map(|c| c.clone())
+    let challenge = PAIRING_CHALLENGES.remove(&req.challenge_id)
+        .map(|c| c.1.clone())
         .ok_or(HttpError::NotFound)?;
     // Drop challenge data
-    FINISH_PAYLOADS.lock().unwrap().remove(&challenge.id);
+    FINISH_PAYLOADS.remove(&challenge.id);
 
     require(challenge.is_initial == delegated_by.is_none())?;
 
@@ -101,25 +102,24 @@ fn finish_pair(
     // Verify delegation attestation and certificate chain
     verify_chain(&req.delegation_attestation_chain, &challenge.id, true)?;
 
-    let mut store = DataStore::get();
     // Only allow entities that delegator has access to
     let allowed_entities = match delegated_by {
         Some(ref delegator) => allowed_entities
             // Filter allowed list if given
             .map(|entities| {
                 entities.into_iter()
-                    .filter(|e| store.get_device_for_entity(delegator, e).is_some())
+                    .filter(|e| STORE.get_device_for_entity(delegator, e).is_some())
                     .collect()
             })
             // Otherwise limit to delegator's allowed list
-            .or_else(|| store.get_device(delegator)
+            .or_else(|| STORE.get_device(delegator)
                 .map(|d| d.allowed_entities)
                 .flatten())
         ,
         None => allowed_entities,
     };
 
-    store.add_device(PairedDevice {
+    STORE.add_device(PairedDevice {
         public_key: req.public_key.clone(),
         delegation_key: req.delegation_key.clone(),
         bls_public_keys: req.bls_public_keys.clone(),
@@ -138,13 +138,13 @@ fn finish_pair(
 #[post("initial/start")]
 async fn start_initial() -> AppResult<impl Responder> {
     // Only for initial setup
-    require(!DataStore::get().has_paired_devices())?;
-    require(INITIAL_PAIRING_SECRET.lock().unwrap().is_none())?;
+    require(!STORE.has_paired_devices())?;
+    require(INITIAL_PAIRING_SECRET.lock().is_none())?;
 
     // Generate secret
     let secret = generate_secret();
     println!("secret = {}", secret);
-    INITIAL_PAIRING_SECRET.lock().unwrap().replace(secret.clone());
+    INITIAL_PAIRING_SECRET.lock().replace(secret.clone());
 
     // Print QR code
     let qr_data = serde_json::to_string(&InitialPairQr {
@@ -162,7 +162,7 @@ async fn finish_initial(req: Json<InitialPairFinishRequest>) -> AppResult<impl R
     println!("Finish initial pair: {:?}", req);
 
     // Verify HMAC
-    let secret = INITIAL_PAIRING_SECRET.lock().unwrap().take().unwrap();
+    let secret = INITIAL_PAIRING_SECRET.lock().take().unwrap();
     let key_bytes = base64::decode(&secret)?;
     let key = hmac::Key::new(hmac::HMAC_SHA256, &key_bytes);
     hmac::verify(&key, req.finish_payload.as_bytes(), &base64::decode(&req.mac)?)
@@ -180,7 +180,7 @@ async fn finish_initial(req: Json<InitialPairFinishRequest>) -> AppResult<impl R
 #[get("delegated/{challenge_id}/finish_payload")]
 async fn get_finish_payload(path: Path<(String,)>) -> AppResult<impl Responder> {
     let (challenge_id,) = path.into_inner();
-    let payload = FINISH_PAYLOADS.lock().unwrap().get(&challenge_id)
+    let payload = FINISH_PAYLOADS.get(&challenge_id)
         .map(|p| p.clone())
         .ok_or(HttpError::NotFound)?;
     Ok(payload)
@@ -192,12 +192,12 @@ async fn post_finish_payload(
     payload: String,
 ) -> AppResult<impl Responder> {
     let (id,) = path.into_inner();
-    require(PAIRING_CHALLENGES.lock().unwrap().contains_key(&id))?;
-    require(!FINISH_PAYLOADS.lock().unwrap().contains_key(&id))?;
+    require(PAIRING_CHALLENGES.contains_key(&id))?;
+    require(!FINISH_PAYLOADS.contains_key(&id))?;
 
     // Raw string for flexibility
     println!("Delegated pair finish payload: {:?}", payload);
-    FINISH_PAYLOADS.lock().unwrap().insert(id, payload);
+    FINISH_PAYLOADS.insert(id, payload);
     Ok(Json(()))
 }
 
@@ -207,7 +207,7 @@ async fn finish_delegated(
     req: Json<SignedDelegation>,
 ) -> AppResult<impl Responder> {
     println!("Finish delegated pair: {:?}", req);
-    let device = DataStore::get().get_device(&req.device)
+    let device = STORE.get_device(&req.device)
         .ok_or(anyhow!("Device not found"))?;
     verify_signature_str(&req.delegation, &device.delegation_key, &req.ec_signature)?;
 
@@ -216,8 +216,7 @@ async fn finish_delegated(
     // Prevent delegator from changing request
     let (id,) = path.into_inner();
     {
-        let map = FINISH_PAYLOADS.lock().unwrap();
-        let orig_payload = map.get(&id)
+        let orig_payload = FINISH_PAYLOADS.get(&id)
             .ok_or(HttpError::NotFound)?;
         require(*orig_payload == del.finish_payload)?;
     }
@@ -241,10 +240,11 @@ async fn get_challenge() -> AppResult<impl Responder> {
     let challenge = PairingChallenge {
         id: generate_secret(),
         timestamp: now(),
-        is_initial: !DataStore::get().has_paired_devices(),
+        is_initial: !STORE.has_paired_devices(),
     };
 
-    PAIRING_CHALLENGES.lock().unwrap().insert(challenge.id.clone(), challenge.clone());
+    PAIRING_CHALLENGES.insert(challenge.id.clone(), challenge.clone());
+    println!("challenge = {:?}", challenge);
     Ok(Json(challenge))
 }
 

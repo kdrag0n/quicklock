@@ -4,6 +4,7 @@ use std::io;
 use std::io::BufReader;
 use std::sync::{Mutex, MutexGuard};
 use std::time::SystemTime;
+use dashmap::DashMap;
 use once_cell::sync::Lazy;
 use serde::{Serialize, Deserialize};
 use qlock::serialize::{base64 as serde_b64};
@@ -33,23 +34,19 @@ pub struct PairedDevice {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DataStore {
-    devices: HashMap<String, PairedDevice>,
+    devices: DashMap<String, PairedDevice>,
 }
 
-static STORE: Lazy<Mutex<DataStore>> = Lazy::new(|| Mutex::new(DataStore::create()));
+pub static STORE: Lazy<DataStore> = Lazy::new(|| DataStore::new());
 
 impl DataStore {
-    pub fn get() -> MutexGuard<'static, DataStore> {
-        STORE.lock().unwrap()
-    }
-
-    fn create() -> DataStore {
+    fn new() -> DataStore {
         load_data().unwrap_or(DataStore {
-            devices: HashMap::new(),
+            devices: DashMap::new(),
         })
     }
 
-    pub fn add_device(&mut self, device: PairedDevice) {
+    pub fn add_device(&self, device: PairedDevice) {
         self.devices.insert(device.public_key.clone(), device);
         self.persist();
     }

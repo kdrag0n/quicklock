@@ -18,8 +18,7 @@ pub fn verify_signature_str(data: &str, public_key: &str, signature: &str) -> Ap
     Ok(())
 }
 
-// TODO: is this crypto secure?
 pub fn generate_secret() -> String {
-    let secret: [u8; 32] = rand::random();
+    let secret: [u8; 32] = rand::random(); // ChaCha12 CSPRNG
     base64::encode(&secret)
 }
