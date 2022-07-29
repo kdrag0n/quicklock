@@ -72,7 +72,6 @@ async fn finish_unlock(
     let device = STORE.get_device_for_entity(&req.public_key, &challenge.entity_id)
         .ok_or(anyhow!("Device not found or not allowed"))?;
     let challenge_str = serde_json::to_string(&challenge)?;
-    println!("verify for: {}", challenge_str);
     verify_ec_signature_str(&challenge_str, &device.public_key, &req.ec_signature)?;
 
     if let Some(bls_keys) = device.bls_public_keys {
