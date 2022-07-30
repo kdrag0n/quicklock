@@ -17,34 +17,34 @@ use crate::bls::{sign_aug, verify_aug};
 
 mod store;
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct RegisterRequest {
-    client_pk: String,
+pub struct RegisterRequest {
+    pub client_pk: String,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct RegisterResponse {
+pub struct RegisterResponse {
     #[serde(with="serde_b64")]
-    server_pk: Vec<u8>,
+    pub server_pk: Vec<u8>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct SignRequest {
-    client_pk: String,
+pub struct SignRequest {
+    pub client_pk: String,
     #[serde(with="serde_b64")]
-    message: Vec<u8>,
+    pub message: Vec<u8>,
     #[serde(with="serde_b64")]
-    client_sig: Vec<u8>,
+    pub client_sig: Vec<u8>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct SignResponse {
+pub struct SignResponse {
     #[serde(with="serde_b64")]
-    aggregate_sig: Vec<u8>,
+    pub aggregate_sig: Vec<u8>,
 }
 
 async fn register(req: Json<RegisterRequest>) -> AppResult<impl IntoResponse> {
