@@ -10,12 +10,13 @@ use base64;
 use ulid::Ulid;
 use std::str;
 use axum::{Json, Router};
+use axum::extract::Path;
 use axum::response::IntoResponse;
-use axum::routing::post;
-use crate::audit::store::{AuthEvent, PairedDevice, STORE};
+use axum::routing::{get, post};
+use crate::audit::store::{LogEvent, PairedDevice, STORE};
 use crate::bls::{sign_aug, verify_aug};
 
-mod store;
+pub mod store;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -35,7 +36,11 @@ pub struct RegisterResponse {
 pub struct SignRequest {
     pub client_pk: String,
     #[serde(with="serde_b64")]
-    pub message: Vec<u8>,
+    pub enc_message: Vec<u8>,
+    #[serde(with="serde_b64")]
+    pub enc_nonce: Vec<u8>,
+    #[serde(with="serde_b64")]
+    pub message_hash: Vec<u8>,
     #[serde(with="serde_b64")]
     pub client_sig: Vec<u8>,
 }
@@ -73,20 +78,21 @@ async fn sign(req: Json<SignRequest>) -> AppResult<impl IntoResponse> {
     let client_pk_data = base64::decode(&device.client_pk)?;
     let client_pk = PublicKey::from_bytes(&client_pk_data)?;
     let client_sig = Signature::from_bytes(&req.client_sig)?;
-    if !verify_aug(&client_sig, &req.message, &[client_pk]) {
+    if !verify_aug(&client_sig, &req.message_hash, &[client_pk]) {
         return Err(anyhow!("Client signature invalid").into());
     }
 
     // Log request
-    STORE.log_event(&device.client_pk, AuthEvent {
+    STORE.log_event(&device.client_pk, LogEvent {
         id: Ulid::new().into(),
         timestamp: SystemTime::now(),
-        payload: req.message.clone(),
+        enc_message: req.enc_message.clone(),
+        enc_nonce: req.enc_nonce.clone(),
     });
 
     // Sign payload
     let sk = PrivateKey::from_bytes(&device.server_sk)?;
-    let sig = sign_aug(&sk, &req.message);
+    let sig = sign_aug(&sk, &req.message_hash);
     // Aggregate signature
     let agg_sig = bls_signatures::aggregate(&[client_sig, sig])?;
 
@@ -95,8 +101,15 @@ async fn sign(req: Json<SignRequest>) -> AppResult<impl IntoResponse> {
     }))
 }
 
+// TODO: auth with replay protection?
+async fn get_logs(Path(client_pk): Path<String>) -> AppResult<impl IntoResponse> {
+    println!("Get logs: {}", client_pk);
+    Ok(Json(STORE.get_logs(&client_pk)))
+}
+
 pub fn service() -> Router {
     Router::new()
         .route("/api/register", post(register))
         .route("/api/sign", post(sign))
+        .route("/api/device/:client_pk/logs", get(get_logs))
 }

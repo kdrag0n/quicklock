@@ -15,18 +15,20 @@ pub struct PairedDevice {
     pub server_sk: Vec<u8>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct AuthEvent {
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LogEvent {
     pub id: String,
     pub timestamp: SystemTime,
     #[serde(with="serde_b64")]
-    pub payload: Vec<u8>,
+    pub enc_message: Vec<u8>,
+    #[serde(with="serde_b64")]
+    pub enc_nonce: Vec<u8>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DataStore {
     devices: DashMap<String, PairedDevice>,
-    logs: DashMap<String, Vec<AuthEvent>>,
+    logs: DashMap<String, Vec<LogEvent>>,
 }
 
 pub static STORE: Lazy<DataStore> = Lazy::new(|| DataStore::create());
@@ -48,7 +50,7 @@ impl DataStore {
         self.devices.get(public_key).map(|d| d.clone())
     }
 
-    pub fn log_event(&self, device_id: &String, event: AuthEvent) {
+    pub fn log_event(&self, device_id: &String, event: LogEvent) {
         debug!("Log event: {:?}", event);
         // Persist needs the lock
         {
@@ -56,6 +58,11 @@ impl DataStore {
             entries.push(event);
         }
         self.persist();
+    }
+
+    pub fn get_logs(&self, device_id: &String) -> Option<Vec<LogEvent>> {
+        self.logs.get(device_id)
+            .map(|v| v.clone())
     }
 
     fn persist(&self) {
