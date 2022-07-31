@@ -33,7 +33,7 @@ pub struct DataStore {
     devices: DashMap<String, PairedDevice>,
 }
 
-pub static STORE: Lazy<DataStore> = Lazy::new(|| DataStore::new());
+pub static STORE: Lazy<DataStore> = Lazy::new(DataStore::new);
 
 impl DataStore {
     fn new() -> Self {

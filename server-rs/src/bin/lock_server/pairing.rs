@@ -86,7 +86,7 @@ fn finish_pair(
     allowed_entities: Option<Vec<String>>,
 ) -> Result<(), Error> {
     let challenge = PAIRING_CHALLENGES.remove(&req.challenge_id)
-        .map(|c| c.1.clone())
+        .map(|(_, challenge)| challenge)
         .ok_or(HttpError::NotFound)?;
     // Drop challenge data
     FINISH_PAYLOADS.remove(&challenge.id);
@@ -113,8 +113,7 @@ fn finish_pair(
             })
             // Otherwise limit to delegator's allowed list
             .or_else(|| STORE.get_device(delegator)
-                .map(|d| d.allowed_entities)
-                .flatten())
+                .and_then(|d| d.allowed_entities))
         ,
         None => allowed_entities,
     };
@@ -201,7 +200,7 @@ async fn finish_delegated(
 ) -> AppResult<impl IntoResponse> {
     println!("Finish delegated pair: {:?}", req);
     let device = STORE.get_device(&req.device)
-        .ok_or(anyhow!("Device not found"))?;
+        .ok_or_else(|| anyhow!("Device not found"))?;
     verify_ec_signature_str(&req.delegation, &device.delegation_key, &req.ec_signature)?;
 
     if let Some(bls_pk) = device.bls_public_key {

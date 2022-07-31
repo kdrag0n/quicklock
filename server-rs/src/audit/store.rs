@@ -31,7 +31,7 @@ pub struct DataStore {
     logs: DashMap<String, Vec<LogEvent>>,
 }
 
-pub static STORE: Lazy<DataStore> = Lazy::new(|| DataStore::create());
+pub static STORE: Lazy<DataStore> = Lazy::new(DataStore::create);
 
 impl DataStore {
     fn create() -> Self {
@@ -50,11 +50,11 @@ impl DataStore {
         self.devices.get(public_key).map(|d| d.clone())
     }
 
-    pub fn log_event(&self, device_id: &String, event: LogEvent) {
+    pub fn log_event(&self, device_id: &str, event: LogEvent) {
         debug!("Log event: {:?}", event);
         // Persist needs the lock
         {
-            let mut entries = self.logs.entry(device_id.clone()).or_default();
+            let mut entries = self.logs.entry(device_id.into()).or_default();
             entries.push(event);
         }
         self.persist();

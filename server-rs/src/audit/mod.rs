@@ -76,7 +76,7 @@ async fn sign(req: Json<SignRequest>) -> AppResult<impl IntoResponse> {
     println!("Sign: {:?}", req);
 
     let device = STORE.get_device(&req.client_pk)
-        .ok_or(anyhow!("Unknown device"))?;
+        .ok_or_else(|| anyhow!("Unknown device"))?;
 
     // Verify client signature to make sure this client is authorized
     let client_pk_data = base64::decode(&device.client_pk)?;

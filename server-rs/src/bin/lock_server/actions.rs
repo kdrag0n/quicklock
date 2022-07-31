@@ -47,7 +47,7 @@ async fn start_unlock(req: Json<UnlockStartRequest>) -> AppResult<impl IntoRespo
     println!("Start unlock: {:?}", req);
 
     CONFIG.entities.get(&req.entity_id)
-        .ok_or(anyhow!("Entity not found"))?;
+        .ok_or_else(|| anyhow!("Entity not found"))?;
 
     let challenge = UnlockChallenge {
         id: generate_secret(),
@@ -67,10 +67,10 @@ async fn finish_unlock(
     println!("Finish unlock: {:?}", req);
 
     let (_, challenge) = UNLOCK_CHALLENGES.remove(&id)
-        .ok_or(anyhow!("Challenge not found"))?;
+        .ok_or_else(|| anyhow!("Challenge not found"))?;
 
     let device = STORE.get_device_for_entity(&req.public_key, &challenge.entity_id)
-        .ok_or(anyhow!("Device not found or not allowed"))?;
+        .ok_or_else(|| anyhow!("Device not found or not allowed"))?;
     let challenge_str = serde_json::to_string(&challenge)?;
     verify_ec_signature_str(&challenge_str, &device.public_key, &req.ec_signature)?;
 

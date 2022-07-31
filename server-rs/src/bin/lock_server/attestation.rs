@@ -153,7 +153,7 @@ fn verify_cert_chain<'c>(certs: &'c [X509Certificate], roots: &[X509Certificate]
 
 fn verify_attestation(cert: &X509Certificate, challenge_id: &str, is_delegation: bool) -> anyhow::Result<()> {
     let ext = cert.get_extension_unique(&oid!(1.3.6.1.4.1.11129.2.1.17))?
-        .ok_or(anyhow!("No attestation extension"))?;
+        .ok_or_else(|| anyhow!("No attestation extension"))?;
 
     let record: KeyDescription = asn1::parse_single(ext.value)?;
 
@@ -175,7 +175,7 @@ fn verify_attestation(cert: &X509Certificate, challenge_id: &str, is_delegation:
     }
 
     if is_delegation {
-        require(!record.tee_enforced.no_auth_required.is_some())?;
+        require(record.tee_enforced.no_auth_required.is_none())?;
         require(record.tee_enforced.unlocked_device_required.is_some())?;
     }
 
@@ -184,10 +184,10 @@ fn verify_attestation(cert: &X509Certificate, challenge_id: &str, is_delegation:
 
 pub fn verify_chain(raw_chain: &[String], challenge_id: &str, is_delegation: bool) -> anyhow::Result<()> {
     let data_chain = raw_chain.iter()
-        .map(|c| base64::decode(c))
+        .map(base64::decode)
         .collect::<Result<Vec<_>, _>>()?;
     let certs: Vec<_> = data_chain.iter()
-        .map(|c| X509Certificate::from_der(&c).map(|c| c.1))
+        .map(|c| X509Certificate::from_der(c).map(|c| c.1))
         .collect::<Result<Vec<_>, _>>()?;
 
     let attestation_cert = verify_cert_chain(&certs, &GOOGLE_ROOTS)?;

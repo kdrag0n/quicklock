@@ -40,7 +40,7 @@ pub fn verify_aug(sig: &Signature, msg: &[u8], pks: &[PublicKey]) -> bool {
         })
         .collect::<Vec<_>>();
 
-    bls_signatures::verify(sig, &hashes, &pks)
+    bls_signatures::verify(sig, &hashes, pks)
 }
 
 // Aggregated public key

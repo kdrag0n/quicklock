@@ -91,10 +91,10 @@ mD/vFDkzF+wm7cyWpQpCVQ=="
 
 lazy_static! {
     static ref GOOGLE_ROOTS_DATA: Vec<Vec<u8>> = GOOGLE_ROOTS_RAW.iter()
-        .map(|c| base64::decode(c.replace("\n", "")).unwrap())
+        .map(|c| base64::decode(c.replace('\n', "")).unwrap())
         .collect();
 
     pub static ref GOOGLE_ROOTS: Vec<X509Certificate<'static>> = GOOGLE_ROOTS_DATA.iter()
-        .map(|c| X509Certificate::from_der(&c).unwrap().1)
+        .map(|c| X509Certificate::from_der(c).unwrap().1)
         .collect();
 }

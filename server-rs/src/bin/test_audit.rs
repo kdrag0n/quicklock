@@ -38,7 +38,7 @@ fn main() -> AppResult<()> {
     let msg: [u8; 32] = rand::random();
     let msg_hash = sha2::Sha256::digest(&msg);
 
-    let mut msg_enc = msg.clone();
+    let mut msg_enc = msg;
     cipher.apply_keystream(&mut msg_enc);
 
     let client_sig = bls_sk.sign(&msg_hash);

@@ -7,7 +7,7 @@ use reqwest::Client;
 pub async fn post_lock(client: &Client, unlocked: bool, entity_id: &str) -> AppResult<()> {
     let service = if unlocked { "unlock" } else { "lock" };
     let entity = CONFIG.entities.get(entity_id)
-        .ok_or(anyhow!("Entity not found"))?;
+        .ok_or_else(|| anyhow!("Entity not found"))?;
 
     let req = serde_json::json!({
         "entity_id": entity.ha_entity,
