@@ -1,6 +1,6 @@
-use bls12_381::{Bls12, G1Affine, G1Projective, G2Projective, hash_to_curve::HashToCurve, Scalar};
+use bls12_381::{Bls12, G1Affine, G1Projective, G2Projective, Gt, hash_to_curve::HashToCurve, Scalar};
 use bls12_381::hash_to_curve::{ExpandMsgXmd, HashToField};
-use pairing::Engine;
+use pairing::{MultiMillerLoop};
 use bls_signatures::{PrivateKey, PublicKey, Serialize, Signature};
 use pairing::group::Curve;
 
@@ -92,7 +92,11 @@ pub fn verify_multi(agg_sig: &Signature, msg: &[u8], agg_pk: &PublicKey) -> bool
         return false;
     }
 
-    let e1 = Bls12::pairing(&G1Affine::generator(), &sig_n.to_affine());
-    let e2 = Bls12::pairing(&pk_n.to_affine(), &hash_to_curve(msg).to_affine());
-    e1 == e2
+    // Optimization: instead of doing 2 full pairings and comparing them, we can use this to compute
+    // the sum with one pairing negated, so the result should be zero if they're equal
+    let pairings = Bls12::multi_miller_loop(&[
+        (&-G1Affine::generator(), &sig_n.to_affine().into()),
+        (&pk_n.to_affine(), &hash_to_curve(msg).to_affine().into()),
+    ]);
+    pairings.final_exponentiation() == Gt::identity()
 }

@@ -14,7 +14,7 @@ use axum::extract::Path;
 use axum::response::IntoResponse;
 use axum::routing::{get, post};
 use crate::audit::store::{LogEvent, PairedDevice, STORE};
-use crate::bls::{aggregate_pks_multi, aggregate_sigs_multi, sign_aug, verify_aug};
+use crate::bls::{aggregate_pks_multi, aggregate_sigs_multi};
 
 pub mod store;
 

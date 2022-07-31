@@ -1,11 +1,11 @@
 use bls_signatures::Serialize;
 use chacha20::ChaCha20;
-use chacha20::cipher::{KeyIvInit, StreamCipher, StreamCipherSeek};
+use chacha20::cipher::{KeyIvInit, StreamCipher};
 use reqwest::blocking::Client;
 use sha2::Digest;
 use qlock::audit::{RegisterRequest, RegisterResponse, SignRequest, SignResponse};
 use qlock::audit::store::LogEvent;
-use qlock::bls::{sign_aug, verify_aug, verify_multi};
+use qlock::bls::{verify_multi};
 use qlock::error::AppResult;
 
 fn main() -> AppResult<()> {
