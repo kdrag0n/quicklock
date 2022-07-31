@@ -50,7 +50,7 @@ struct PairFinishPayload {
     pub challenge_id: String,
     pub public_key: String,
     pub delegation_key: String,
-    pub bls_public_keys: Option<Vec<String>>,
+    pub bls_public_key: Option<String>,
     pub main_attestation_chain: Vec<String>,
     pub delegation_attestation_chain: Vec<String>,
 }
@@ -122,7 +122,7 @@ fn finish_pair(
     STORE.add_device(PairedDevice {
         public_key: req.public_key.clone(),
         delegation_key: req.delegation_key.clone(),
-        bls_public_keys: req.bls_public_keys.clone(),
+        bls_public_key: req.bls_public_key.clone(),
         // Params
         expires_at,
         delegated_by,
@@ -204,8 +204,8 @@ async fn finish_delegated(
         .ok_or(anyhow!("Device not found"))?;
     verify_ec_signature_str(&req.delegation, &device.delegation_key, &req.ec_signature)?;
 
-    if let Some(bls_keys) = device.bls_public_keys {
-        verify_bls_signature_str(&req.delegation, &bls_keys, &req.bls_signature)?;
+    if let Some(bls_pk) = device.bls_public_key {
+        verify_bls_signature_str(&req.delegation, &bls_pk, &req.bls_signature)?;
     }
 
     let del: Delegation = serde_json::from_str(&req.delegation)?;

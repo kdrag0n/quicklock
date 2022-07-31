@@ -5,7 +5,7 @@ use reqwest::blocking::Client;
 use sha2::Digest;
 use qlock::audit::{RegisterRequest, RegisterResponse, SignRequest, SignResponse};
 use qlock::audit::store::LogEvent;
-use qlock::bls::{sign_aug, verify_aug};
+use qlock::bls::{sign_aug, verify_aug, verify_multi};
 use qlock::error::AppResult;
 
 fn main() -> AppResult<()> {
@@ -31,8 +31,8 @@ fn main() -> AppResult<()> {
         .send()?
         .error_for_status()?
         .json()?;
-    let server_pk = bls_signatures::PublicKey::from_bytes(&resp.server_pk)?;
-    println!("Register -> server_pk={}", base64::encode(&resp.server_pk));
+    let agg_pk = bls_signatures::PublicKey::from_bytes(&resp.aggregate_pk)?;
+    println!("Register -> aggregate_pk={}", base64::encode(&resp.aggregate_pk));
 
     // Sign
     let msg: [u8; 32] = rand::random();
@@ -41,7 +41,7 @@ fn main() -> AppResult<()> {
     let mut msg_enc = msg.clone();
     cipher.apply_keystream(&mut msg_enc);
 
-    let client_sig = sign_aug(&bls_sk, &msg_hash);
+    let client_sig = bls_sk.sign(&msg_hash);
     println!("Sign: msg={} hash={}", base64::encode(&msg), base64::encode(&msg_hash));
     let resp: SignResponse = client.post("http://localhost:9001/api/sign")
         .json(&SignRequest {
@@ -59,8 +59,7 @@ fn main() -> AppResult<()> {
     // Verify sig under both PKs
     println!("Verify agg sig");
     let agg_sig = bls_signatures::Signature::from_bytes(&resp.aggregate_sig)?;
-    let pks = [bls_pk, server_pk];
-    if !verify_aug(&agg_sig, &msg_hash, &pks) {
+    if !verify_multi(&agg_sig, &msg_hash, &agg_pk) {
         println!("Invalid signature");
         return Ok(());
     }

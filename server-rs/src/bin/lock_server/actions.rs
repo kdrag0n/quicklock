@@ -74,8 +74,8 @@ async fn finish_unlock(
     let challenge_str = serde_json::to_string(&challenge)?;
     verify_ec_signature_str(&challenge_str, &device.public_key, &req.ec_signature)?;
 
-    if let Some(bls_keys) = device.bls_public_keys {
-        verify_bls_signature_str(&challenge_str, &bls_keys, &req.bls_signature)?;
+    if let Some(bls_pk) = device.bls_public_key {
+        verify_bls_signature_str(&challenge_str, &bls_pk, &req.bls_signature)?;
     }
 
     // Verify timestamp

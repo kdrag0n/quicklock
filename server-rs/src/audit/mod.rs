@@ -14,7 +14,7 @@ use axum::extract::Path;
 use axum::response::IntoResponse;
 use axum::routing::{get, post};
 use crate::audit::store::{LogEvent, PairedDevice, STORE};
-use crate::bls::{sign_aug, verify_aug};
+use crate::bls::{aggregate_pks_multi, aggregate_sigs_multi, sign_aug, verify_aug};
 
 pub mod store;
 
@@ -28,7 +28,7 @@ pub struct RegisterRequest {
 #[serde(rename_all = "camelCase")]
 pub struct RegisterResponse {
     #[serde(with="serde_b64")]
-    pub server_pk: Vec<u8>,
+    pub aggregate_pk: Vec<u8>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -56,15 +56,19 @@ async fn register(req: Json<RegisterRequest>) -> AppResult<impl IntoResponse> {
     println!("Register: {:?}", req);
 
     // Generate server private key for this device
+    let client_pk_data = base64::decode(&req.client_pk)?;
+    let client_pk = PublicKey::from_bytes(&client_pk_data)?;
     let sk = PrivateKey::generate(&mut OsRng);
     STORE.add_device(PairedDevice {
         client_pk: req.client_pk.clone(),
         server_sk: sk.as_bytes(),
     });
 
-    // Return our public key
+    // Return aggregated public key
+    let server_pk = sk.public_key();
+    let agg_pk = aggregate_pks_multi(&[&client_pk, &server_pk]);
     Ok(Json(RegisterResponse {
-        server_pk: sk.public_key().as_bytes(),
+        aggregate_pk: agg_pk.as_bytes(),
     }))
 }
 
@@ -78,7 +82,7 @@ async fn sign(req: Json<SignRequest>) -> AppResult<impl IntoResponse> {
     let client_pk_data = base64::decode(&device.client_pk)?;
     let client_pk = PublicKey::from_bytes(&client_pk_data)?;
     let client_sig = Signature::from_bytes(&req.client_sig)?;
-    if !verify_aug(&client_sig, &req.message_hash, &[client_pk]) {
+    if !client_pk.verify(client_sig, &req.message_hash) {
         return Err(anyhow!("Client signature invalid").into());
     }
 
@@ -92,9 +96,12 @@ async fn sign(req: Json<SignRequest>) -> AppResult<impl IntoResponse> {
 
     // Sign payload
     let sk = PrivateKey::from_bytes(&device.server_sk)?;
-    let sig = sign_aug(&sk, &req.message_hash);
+    let sig = sk.sign(&req.message_hash);
     // Aggregate signature
-    let agg_sig = bls_signatures::aggregate(&[client_sig, sig])?;
+    let agg_sig = aggregate_sigs_multi(&[
+        (&client_sig, &client_pk),
+        (&sig, &sk.public_key()),
+    ]);
 
     Ok(Json(SignResponse {
         aggregate_sig: agg_sig.as_bytes(),

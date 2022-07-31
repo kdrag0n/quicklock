@@ -3,7 +3,7 @@ use bls_signatures::{PublicKey, Serialize, Signature};
 use ring::{signature};
 use ring::signature::UnparsedPublicKey;
 use spki::SubjectPublicKeyInfo;
-use qlock::bls::verify_aug;
+use qlock::bls::{verify_multi};
 use qlock::checks::require;
 use qlock::error::AppResult;
 
@@ -21,16 +21,11 @@ pub fn verify_ec_signature_str(data: &str, public_key: &str, signature: &str) ->
     Ok(())
 }
 
-pub fn verify_bls_signature_str(data: &str, public_keys: &[String], signature: &str) -> AppResult<()> {
+pub fn verify_bls_signature_str(data: &str, public_key: &str, signature: &str) -> AppResult<()> {
     let sig = Signature::from_bytes(&base64::decode(signature)?)?;
-    let pks_data = public_keys.iter()
-        .map(|pk| base64::decode(pk))
-        .collect::<Result<Vec<_>, _>>()?;
-    let pks = pks_data.iter()
-        .map(|pk| PublicKey::from_bytes(&pk))
-        .collect::<Result<Vec<_>, _>>()?;
+    let pk = PublicKey::from_bytes(&base64::decode(public_key)?)?;
 
-    require(verify_aug(&sig, data.as_bytes(), &pks))?;
+    require(verify_multi(&sig, data.as_bytes(), &pk))?;
 
     Ok(())
 }

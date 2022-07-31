@@ -22,7 +22,7 @@ pub struct PairedDevice {
 
     // Custom protocol
     // BLS keys
-    pub bls_public_keys: Option<Vec<String>>,
+    pub bls_public_key: Option<String>,
 
     // WebAuthn Authenticator object
     pub serialized_authenticator: Option<String>,

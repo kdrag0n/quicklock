@@ -1167,6 +1167,7 @@ dependencies = [
  "hyper",
  "lazy_static",
  "once_cell",
+ "pairing",
  "parking_lot",
  "qrcode",
  "rand",
