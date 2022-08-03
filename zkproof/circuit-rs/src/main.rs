@@ -3,7 +3,7 @@ use std::{str::FromStr, collections::{HashSet, btree_map::Iter}, cmp::max, time:
 use curve25519_dalek::scalar::Scalar;
 use dalek_ff_group::field::FieldElement;
 use ff::PrimeField;
-use libspartan::{Instance, InputsAssignment, VarsAssignment, SNARKGens, SNARK};
+use libspartan::{Instance, InputsAssignment, VarsAssignment, SNARKGens, SNARK, NIZKGens, NIZK};
 use merlin::Transcript;
 use neptune::circuit2::poseidon_hash_num;
 use r1cs::{GadgetBuilder, Field, num::{BigUint, Num, Zero, Integer}, Expression, PoseidonBuilder, MdsMatrix, Element, values, MiMCBlockCipher, DaviesMeyer, MerkleDamgard, HashFunction, binary_unsigned_values, Gadget, WireValues, Wire, Constraint};
@@ -181,22 +181,15 @@ fn export_mir_r1cs(
     println!("Instance is satisfiable: {}", res);
 
     // Create proof public params
-    println!("public params (snark)");
-    let gens = SNARKGens::new(constraints.len(), witness.len(), inputs.len(), non_zero_entries);
+    println!("public params (nizk)");
+    let gens = NIZKGens::new(constraints.len(), witness.len(), inputs.len());
 
     for i in 0..1000 {
-        // Create a commitment to the R1CS instance
-        let (comm, decomm) = profile!("commit", {
-            SNARK::encode(&inst, &gens)
-        });
-
         // Produce a proof of satisfiability
         let proof = profile!("prove", {
             let mut prover_transcript = Transcript::new(b"snark_example");
-            SNARK::prove(
+            NIZK::prove(
                 &inst,
-                &comm,
-                &decomm,
                 vars_assignment.clone(),
                 &inputs_assignment,
                 &gens,
@@ -204,13 +197,13 @@ fn export_mir_r1cs(
             )
         });
         
-        let file = File::create("proof.json").unwrap();
-        serde_json::to_writer(file, &proof).unwrap();
+        // let file = File::create("proof.json").unwrap();
+        // serde_json::to_writer(file, &proof).unwrap();
 
         // Verify
         profile!("verify", {
             let mut verifier_transcript = Transcript::new(b"snark_example");
-            proof.verify(&comm, &inputs_assignment, &mut verifier_transcript, &gens).unwrap();
+            proof.verify(&inst, &inputs_assignment, &mut verifier_transcript, &gens).unwrap();
         });
         println!("proof ok");
     }
