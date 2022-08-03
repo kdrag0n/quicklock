@@ -1,4 +1,4 @@
-use std::{str::FromStr, collections::{HashSet, btree_map::Iter}, cmp::max, time::Instant};
+use std::{str::FromStr, collections::{HashSet, btree_map::Iter}, cmp::max, time::Instant, fs::File};
 
 use curve25519_dalek::scalar::Scalar;
 use dalek_ff_group::field::FieldElement;
@@ -160,6 +160,13 @@ fn export_mir_r1cs(
         &C,
     ).unwrap();
 
+    println!("#constraints={} #variables={} #inputs={} #non_zero_entries={}",
+        constraints.len(),
+        witness.len(),
+        inputs.len(),
+        non_zero_entries,
+    );
+
     println!("vars");
     let vars: Vec<_> = witness.iter().map(|v| v.value).collect();
     let vars_assignment = VarsAssignment::new(&vars).unwrap();
@@ -177,31 +184,33 @@ fn export_mir_r1cs(
     println!("public params (snark)");
     let gens = SNARKGens::new(constraints.len(), witness.len(), inputs.len(), non_zero_entries);
 
-    // Create a commitment to the R1CS instance
-    let (comm, decomm) = profile!("commit", {
-        SNARK::encode(&inst, &gens)
-    });
+    for i in 0..1000 {
+        // Create a commitment to the R1CS instance
+        let (comm, decomm) = profile!("commit", {
+            SNARK::encode(&inst, &gens)
+        });
 
-    // Produce a proof of satisfiability
-    let proof = profile!("prove", {
-        let mut prover_transcript = Transcript::new(b"snark_example");
-        SNARK::prove(
-            &inst,
-            &comm,
-            &decomm,
-            vars_assignment,
-            &inputs_assignment,
-            &gens,
-            &mut prover_transcript,
-        )
-    });
+        // Produce a proof of satisfiability
+        let proof = profile!("prove", {
+            let mut prover_transcript = Transcript::new(b"snark_example");
+            SNARK::prove(
+                &inst,
+                &comm,
+                &decomm,
+                vars_assignment.clone(),
+                &inputs_assignment,
+                &gens,
+                &mut prover_transcript,
+            )
+        });
 
-    // Verify
-    profile!("verify", {
-        let mut verifier_transcript = Transcript::new(b"snark_example");
-        proof.verify(&comm, &inputs_assignment, &mut verifier_transcript, &gens).unwrap();
-    });
-    println!("proof ok");
+        // Verify
+        profile!("verify", {
+            let mut verifier_transcript = Transcript::new(b"snark_example");
+            proof.verify(&comm, &inputs_assignment, &mut verifier_transcript, &gens).unwrap();
+        });
+        println!("proof ok");
+    }
 }
 
 fn translate_id(
