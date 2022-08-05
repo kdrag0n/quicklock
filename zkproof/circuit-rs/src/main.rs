@@ -1,28 +1,35 @@
 use std::{str::FromStr, collections::{HashSet, btree_map::Iter}, cmp::max, time::Instant, fs::File};
 
+use ::chacha20::{ChaCha8, cipher::{KeyIvInit, StreamCipher}};
 use curve25519_dalek::scalar::Scalar;
 use dalek_ff_group::field::FieldElement;
-use ff::PrimeField;
+use ff::{PrimeField, derive::bitvec::macros::internal::funty::Numeric};
 use libspartan::{Instance, InputsAssignment, VarsAssignment, SNARKGens, SNARK, NIZKGens, NIZK};
 use merlin::Transcript;
 use neptune::circuit2::poseidon_hash_num;
-use r1cs::{GadgetBuilder, Field, num::{BigUint, Num, Zero, Integer}, Expression, PoseidonBuilder, MdsMatrix, Element, values, MiMCBlockCipher, DaviesMeyer, MerkleDamgard, HashFunction, binary_unsigned_values, Gadget, WireValues, Wire, Constraint};
+use r1cs::{GadgetBuilder, Field, num::{BigUint, Num, Zero, Integer, bigint::ToBigUint}, Expression, PoseidonBuilder, MdsMatrix, Element, values, MiMCBlockCipher, DaviesMeyer, MerkleDamgard, HashFunction, binary_unsigned_values, Gadget, WireValues, Wire, Constraint, BinaryExpression};
+
+use crate::{chacha20::R1csChaCha20, chacha_dbg::encrypt_block};
 // use r1cs_zkinterface::{write_circuit_and_r1cs, write_circuit_and_witness};
 // use spzk::R1csReader;
+
+mod chacha20;
+mod chacha_dbg;
 
 macro_rules! profile {
     ($tag:expr, $code:block) => {
         {
             println!("[{}] START", $tag);
-            let __profile_start = Instant::now();
+            let start = Instant::now();
             let ret = $code;
-            let __profile_end = Instant::now();
-            println!("[{}] END: {} ms", $tag, __profile_end.duration_since(__profile_start).as_millis());
+            let end = Instant::now();
+            println!("[{}] END: {} ms", $tag, end.duration_since(start).as_millis());
             ret
         }
     };
 }
 
+#[derive(Debug)]
 struct Curve25519 {}
 
 impl Field for Curve25519 {
@@ -216,10 +223,10 @@ fn translate_id(
 ) -> usize {
     let num_vars = witness.len();
     match witness.iter().position(|v| v.id == id) {
-        Some(idx) => return idx,
+        Some(idx) => idx,
         None => match inputs.iter().position(|v| v.id == id) {
-            Some(idx) => return idx + num_vars + 1,
-            None => return num_vars
+            Some(idx) => idx + num_vars + 1,
+            None => num_vars
         }
     }
 }
@@ -229,9 +236,9 @@ fn count_non_zero(constraints: &Vec<BilinearConstraint>) -> usize {
     let mut count_b = 0;
     let mut count_c = 0;
     for BilinearConstraint { a, b, c } in constraints {
-        count_a += a.iter().filter(|&v| v.value.iter().any(|x| *x != 0)).count();
-        count_b += b.iter().filter(|&v| v.value.iter().any(|x| *x != 0)).count();
-        count_c += c.iter().filter(|&v| v.value.iter().any(|x| *x != 0)).count();
+        count_a += a.iter().filter(|&v| v.value.iter().any(|&x| x != 0)).count();
+        count_b += b.iter().filter(|&v| v.value.iter().any(|&x| x != 0)).count();
+        count_c += c.iter().filter(|&v| v.value.iter().any(|&x| x != 0)).count();
     }
 
     max(count_a, max(count_b, count_c))
@@ -291,6 +298,8 @@ where
 }
 
 /*
+nonce specified externally for circuit
+
 pub inputs:
 commitment
 encrypted msg
@@ -307,6 +316,7 @@ assert:
 commitment == hash(enc key + enc commit nonce)
 encrypted msg = enc(orig msg, enc key)
 return hash(orig msg)   // could laos be assert hash == 
+----------------------------------------------------------------------
  */
 fn main() {
     let mds_matrix_rows: Vec<Vec<Element<F>>> = vec![
@@ -339,13 +349,17 @@ fn main() {
     // Assert hash equals
 
     // let in_msg_hash = builder.wire();
-    let in_orig_msg = builder.wire();
+    // let in_pub_enc_commit = builder.wire();
+    // let in_pub_enc_msg = builder.wire();
+    let in_priv_orig_msg = builder.binary_wire(512);
+    let in_priv_enc_key = builder.binary_wire(256);
+    // let in_priv_enc_commit_nonce = builder.wire();
 
-    // let msg_hash_exp = Expression::from(in_msg_hash);
-    let orig_msg_exp = Expression::from(in_orig_msg);
+    // // let msg_hash_exp = Expression::from(in_msg_hash);
+    // let orig_msg_exp = Expression::from(in_priv_orig_msg);
 
-    // expect_msg_hash = hash(orig_msg)
-    let expect_msg_hash = hash(&mut builder, &[orig_msg_exp]);
+    // // expect_msg_hash = hash(orig_msg)
+    // let expect_msg_hash = hash(&mut builder, &[orig_msg_exp]);
 
     // assert(msg_hash == expect_msg_hash)
     // builder.assert_equal(&msg_hash_exp, &expect_msg_hash);
@@ -354,30 +368,57 @@ fn main() {
     // // output = expect_msg_hash * 0 = 0
     // let out_zero = builder.product(&expect_msg_hash, &Expression::zero());
 
-    let gadget = builder.build();
+    let in_priv_orig_msg_exp = BinaryExpression::from(&in_priv_orig_msg);
+    let in_priv_enc_key_exp = BinaryExpression::from(&in_priv_enc_key);
 
-    println!("exec");
     // 252-bit message for now
     // msg mod P
     // let msg: [u8; 32] = rand::random();
-    let msg = [0u8; 32];
+    let msg = [0u8; 64];
     let msg_n = BigUint::from_bytes_le(&msg);
-    let msg_clamped = msg_n.mod_floor(&Curve25519::order());
 
-    let mut values = values!(in_orig_msg => msg_clamped.into());
+    let enc_key = [0u8; 32];
+    let enc_key_n = BigUint::from_bytes_le(&enc_key);
+
+    // let nonce = 0x010203040506070809101112;
+    let nonce = 0;
+
+    // encrypt!
+    let mut chacha_gadget = R1csChaCha20::new(&mut builder, 0, nonce);
+
+    let out_enc_msg = chacha_gadget.encrypt_block(&in_priv_enc_key_exp, &in_priv_orig_msg_exp);
+    let gadget = builder.build();
+
+    println!("exec");
+
+    // in_priv_orig_msg => msg_clamped.into(),
+    let mut values = binary_unsigned_values!(
+        &in_priv_orig_msg => &msg_n.into(),
+        &in_priv_enc_key => &enc_key_n.into()
+    );
     let satisfied = gadget.execute(&mut values);
     assert!(satisfied);
 
     // Get the hash
-    let out_hash = profile!("exec circuit", {
-        expect_msg_hash.evaluate(&values)
+    let out_enc_data = profile!("exec circuit", {
+        out_enc_msg.evaluate(&values)
+        // expect_msg_hash.evaluate(&values)
     });
-    println!("out_hash {:?}", out_hash.to_biguint());
+    println!("out_enc_data {:?}", out_enc_data.to_bytes_le());
+    println!("out_enc_data_n {:?}", out_enc_data.to_biguint());
 
+    println!("enc");
+    let nonce_data: [u8; 12] = nonce.to_be_bytes()[4..16].try_into().unwrap();
+    println!("nd {:?}", nonce_data);
+    let mut msg_enc = msg.clone();
+    // ChaCha8::new_from_slices(&enc_key, &nonce_data).unwrap().apply_keystream(&mut msg_enc);
+    encrypt_block(&enc_key, &mut msg_enc, 0, &nonce_data);
+    println!("msg_enc {:?}", msg_enc);
+    println!("msg_enc_n le {:?}", BigUint::from_bytes_le(&msg_enc));
+    println!("msg_enc_n be {:?}", BigUint::from_bytes_be(&msg_enc));
 
     let mut public_wires = HashSet::new();
     public_wires.insert(Wire::ONE);
-    public_wires.extend(expect_msg_hash.dependencies());
     // let circuit_data = write_zkinterface(&gadget, &values);
 
     println!("\ntry spartan");
