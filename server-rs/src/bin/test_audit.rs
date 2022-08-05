@@ -4,9 +4,20 @@ use chacha20::cipher::{KeyIvInit, StreamCipher};
 use reqwest::blocking::Client;
 use sha2::Digest;
 use qlock::audit::{RegisterRequest, RegisterResponse, SignRequest, SignResponse};
+use qlock::audit::client::AuditClientState;
 use qlock::audit::store::LogEvent;
 use qlock::bls::{verify_multi};
 use qlock::error::AppResult;
+
+// Commitment scheme:
+// hash(key + nonce) with 96-bit nonce
+// Must be deterministic, so the nonce is generated at registration time
+// TODO: nonce could be removed for perf
+fn commit(key: &[u8; 32], nonce: &[u8; 12]) -> [u8; 32] {
+    let mut buf = key.to_vec();
+    buf.extend_from_slice(nonce);
+    sha2::Sha256::digest(&buf).into()
+}
 
 fn main() -> AppResult<()> {
     let client = Client::new();
@@ -21,12 +32,17 @@ fn main() -> AppResult<()> {
     let nonce: [u8; 12] = rand::random();
     let mut cipher = ChaCha20::new(&enc_key.into(), &nonce.into());
 
+    // Generate commitment to key
+    let enc_commit_nonce: [u8; 12] = rand::random();
+    let enc_commit = commit(&enc_key, &enc_commit_nonce);
+
     // Register
     let bls_pk_str = base64::encode(&bls_pk.as_bytes());
     println!("Register: pk={}", bls_pk_str);
     let resp: RegisterResponse = client.post("http://localhost:9001/api/register")
         .json(&RegisterRequest {
             client_pk: bls_pk_str.clone(),
+            client_msg_enc_commit: enc_commit.into(),
         })
         .send()?
         .error_for_status()?
@@ -83,6 +99,14 @@ fn main() -> AppResult<()> {
     dec_cipher.apply_keystream(&mut dec_msg);
 
     println!("Decrypted message: {}", base64::encode(&dec_msg));
+
+    let state = AuditClientState {
+        bls_sk: bls_sk.as_bytes(),
+        enc_key: enc_key.into(),
+        enc_commit_nonce: enc_commit_nonce.into(),
+    };
+    println!("\nState: {}", serde_json::to_string_pretty(&state)?);
+
 
     Ok(())
 }

@@ -11,7 +11,7 @@ use crate::serialize::{base64 as serde_b64};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PairedDevice {
     pub client_pk: String,
-    #[serde(with="serde_b64")]
+    #[serde(with = "serde_b64")]
     pub server_sk: Vec<u8>,
 }
 
@@ -19,9 +19,9 @@ pub struct PairedDevice {
 pub struct LogEvent {
     pub id: String,
     pub timestamp: SystemTime,
-    #[serde(with="serde_b64")]
+    #[serde(with = "serde_b64")]
     pub enc_message: Vec<u8>,
-    #[serde(with="serde_b64")]
+    #[serde(with = "serde_b64")]
     pub enc_nonce: Vec<u8>,
 }
 
@@ -47,7 +47,7 @@ impl DataStore {
     }
 
     pub fn get_device(&self, public_key: &String) -> Option<PairedDevice> {
-        self.devices.get(public_key).map(|d| d.clone())
+        Some(self.devices.get(public_key)?.clone())
     }
 
     pub fn log_event(&self, device_id: &str, event: LogEvent) {
@@ -61,8 +61,7 @@ impl DataStore {
     }
 
     pub fn get_logs(&self, device_id: &String) -> Option<Vec<LogEvent>> {
-        self.logs.get(device_id)
-            .map(|v| v.clone())
+        Some(self.logs.get(device_id)?.clone())
     }
 
     fn persist(&self) {

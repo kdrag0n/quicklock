@@ -48,9 +48,12 @@ impl DataStore {
     }
 
     pub fn get_device(&self, public_key: &String) -> Option<PairedDevice> {
-        self.devices.get(public_key)
-            .map(|d| d.clone())
-            .filter(|d| d.expires_at > now())
+        let device = self.devices.get(public_key)?.clone();
+        if device.expires_at > now() {
+            Some(device)
+        } else {
+            None
+        }
     }
 
     pub fn get_device_for_entity(&self, public_key: &String, entity_id: &String) -> Option<PairedDevice> {

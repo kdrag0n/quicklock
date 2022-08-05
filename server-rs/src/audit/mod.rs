@@ -17,17 +17,20 @@ use crate::audit::store::{LogEvent, PairedDevice, STORE};
 use crate::bls::{aggregate_pks_multi, aggregate_sigs_multi};
 
 pub mod store;
+pub mod client;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RegisterRequest {
     pub client_pk: String,
+    #[serde(with = "serde_b64")]
+    pub client_msg_enc_commit: Vec<u8>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RegisterResponse {
-    #[serde(with="serde_b64")]
+    #[serde(with = "serde_b64")]
     pub aggregate_pk: Vec<u8>,
 }
 
@@ -35,20 +38,20 @@ pub struct RegisterResponse {
 #[serde(rename_all = "camelCase")]
 pub struct SignRequest {
     pub client_pk: String,
-    #[serde(with="serde_b64")]
+    #[serde(with = "serde_b64")]
     pub enc_message: Vec<u8>,
-    #[serde(with="serde_b64")]
+    #[serde(with = "serde_b64")]
     pub enc_nonce: Vec<u8>,
-    #[serde(with="serde_b64")]
+    #[serde(with = "serde_b64")]
     pub message_hash: Vec<u8>,
-    #[serde(with="serde_b64")]
+    #[serde(with = "serde_b64")]
     pub client_sig: Vec<u8>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SignResponse {
-    #[serde(with="serde_b64")]
+    #[serde(with = "serde_b64")]
     pub aggregate_sig: Vec<u8>,
 }
 
