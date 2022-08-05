@@ -12,6 +12,7 @@ curve25519-dalek = { version = "3.2.1", features = ["avx2_backend"] }
 dalek-ff-group = "0.1.2"
 debugless-unwrap = "0.0.4"
 ff = { version = "0.12.0", features = ["ff_derive", "derive"] }
+lazy_static = "1.4.0"
 merlin = "3.0.0"
 neptune = "7.0.0"
 r1cs = { version = "0.4.7", path = "../../../../crypto/r1cs" }
@@ -24,3 +25,8 @@ spartan = { version = "0.6.0", path = "../../../../crypto/spartan" }
 
 [profile.release]
 debug = 1
+
+[profile.release-lto]
+inherits = "release"
+lto = true
+debug = 0

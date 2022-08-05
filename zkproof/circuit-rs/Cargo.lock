@@ -286,6 +286,7 @@ dependencies = [
  "dalek-ff-group",
  "debugless-unwrap",
  "ff",
+ "lazy_static",
  "merlin",
  "neptune",
  "r1cs",
