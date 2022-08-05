@@ -280,6 +280,7 @@ dependencies = [
 name = "circuit-rs"
 version = "0.1.0"
 dependencies = [
+ "bincode",
  "chacha20",
  "curve25519-dalek",
  "dalek-ff-group",

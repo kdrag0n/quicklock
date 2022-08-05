@@ -203,9 +203,12 @@ fn export_mir_r1cs(
                 &mut prover_transcript,
             )
         });
-        
+
         let file = File::create("proof.json").unwrap();
         serde_json::to_writer(file, &proof).unwrap();
+
+        let file = File::create("proof.bin").unwrap();
+        bincode::serialize_into(&file, &proof).unwrap();
 
         // Verify
         profile!("verify", {
