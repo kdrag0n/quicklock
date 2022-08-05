@@ -429,7 +429,7 @@ impl AuditGadgetAssert {
             self.in_pub_commit => in_pub.commit.clone().into(),
             self.in_pub_msg_hash => in_pub.msg_hash.clone().into()
         ));
-    
+
         let mut verifier_transcript = Transcript::new(b"audit");
         proof.verify(&self.prover_inst, &inputs, &mut verifier_transcript, &self.prover_gens)
             .is_ok()
@@ -567,8 +567,8 @@ fn main() {
     });
     println!("outputs: {:#?}", outputs);
 
+    let assert_gadget = AuditGadgetAssert::new();
     for _ in 0..1000 {
-        let assert_gadget = AuditGadgetAssert::new();
         let proof = profile!("prove", {
             assert_gadget.prove(&inputs, &outputs)
         });
