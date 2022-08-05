@@ -7,7 +7,7 @@ use ff::{PrimeField, derive::bitvec::macros::internal::funty::Numeric};
 use libspartan::{Instance, InputsAssignment, VarsAssignment, SNARKGens, SNARK, NIZKGens, NIZK};
 use merlin::Transcript;
 use neptune::circuit2::poseidon_hash_num;
-use r1cs::{GadgetBuilder, Field, num::{BigUint, Num, Zero, Integer, bigint::ToBigUint}, Expression, PoseidonBuilder, MdsMatrix, Element, values, MiMCBlockCipher, DaviesMeyer, MerkleDamgard, HashFunction, binary_unsigned_values, Gadget, WireValues, Wire, Constraint, BinaryExpression};
+use r1cs::{GadgetBuilder, Field, num::{BigUint, Num, Zero, Integer, bigint::ToBigUint}, Expression, PoseidonBuilder, MdsMatrix, Element, values, MiMCBlockCipher, DaviesMeyer, MerkleDamgard, HashFunction, binary_unsigned_values, Gadget, WireValues, Wire, Constraint, BinaryExpression, BlockCipher};
 
 use crate::{chacha20::R1csChaCha20, chacha_dbg::encrypt_block};
 // use r1cs_zkinterface::{write_circuit_and_r1cs, write_circuit_and_witness};
@@ -204,8 +204,8 @@ fn export_mir_r1cs(
             )
         });
         
-        // let file = File::create("proof.json").unwrap();
-        // serde_json::to_writer(file, &proof).unwrap();
+        let file = File::create("proof.json").unwrap();
+        serde_json::to_writer(file, &proof).unwrap();
 
         // Verify
         profile!("verify", {
@@ -297,6 +297,18 @@ where
         .collect()
 }
 
+fn gen_curve_key<F: Field>() -> ([u8; 32], BigUint) {
+    let order = F::order();
+    // Rejection sampling
+    loop {
+        let bytes: [u8; 32] = rand::random();
+        let num = BigUint::from_bytes_le(&bytes);
+        if num < order {
+            return (bytes, num);
+        }
+    }
+}
+
 /*
 nonce specified externally for circuit
 
@@ -306,17 +318,36 @@ encrypted msg
 
 priv inputs:
 enc key
-enc commit nonce
 orig msg
 
 output:
 msg hash
 
 assert:
-commitment == hash(enc key + enc commit nonce)
+commitment == hash(enc key)
 encrypted msg = enc(orig msg, enc key)
 return hash(orig msg)   // could laos be assert hash == 
+
 ----------------------------------------------------------------------
+
+compute version:
+
+pub inputs:
+none
+
+priv inputs:
+enc key
+orig msg
+
+outputs:
+commitment
+enc msg
+msg hash
+
+compute:
+commitment = hash(enc key)
+encrypted msg = enc(orig msg, enc key)
+msg hash = hash(orig msg)
  */
 fn main() {
     let mds_matrix_rows: Vec<Vec<Element<F>>> = vec![
@@ -343,17 +374,20 @@ fn main() {
         .mds_matrix(MdsMatrix::new(mds_matrix_rows))
         .security_bits(128)
         .build();
+    let cipher = MiMCBlockCipher::default();
 
     println!("make r1cs");
     // 32-byte, 256-bit input data.
     // Assert hash equals
 
-    // let in_msg_hash = builder.wire();
+    // for assertion version
+    // let in_pub_msg_hash = builder.wire();
     // let in_pub_enc_commit = builder.wire();
     // let in_pub_enc_msg = builder.wire();
-    let in_priv_orig_msg = builder.binary_wire(512);
-    let in_priv_enc_key = builder.binary_wire(256);
-    // let in_priv_enc_commit_nonce = builder.wire();
+
+    let in_priv_enc_key = builder.wire();
+    let in_priv_orig_msg1 = builder.wire();
+    let in_priv_orig_msg2 = builder.wire();
 
     // // let msg_hash_exp = Expression::from(in_msg_hash);
     // let orig_msg_exp = Expression::from(in_priv_orig_msg);
@@ -368,54 +402,70 @@ fn main() {
     // // output = expect_msg_hash * 0 = 0
     // let out_zero = builder.product(&expect_msg_hash, &Expression::zero());
 
-    let in_priv_orig_msg_exp = BinaryExpression::from(&in_priv_orig_msg);
-    let in_priv_enc_key_exp = BinaryExpression::from(&in_priv_enc_key);
+    let in_priv_enc_key_exp = Expression::from(&in_priv_enc_key);
+    let in_priv_orig_msg1_exp = Expression::from(&in_priv_orig_msg1);
+    let in_priv_orig_msg2_exp = Expression::from(&in_priv_orig_msg2);
 
-    // 252-bit message for now
-    // msg mod P
-    // let msg: [u8; 32] = rand::random();
-    let msg = [0u8; 64];
-    let msg_n = BigUint::from_bytes_le(&msg);
+    // 256 bits (128x2)
+    // let msg = [0u8; 32];
+    let msg: [u8; 32] = rand::random();
+    let msg_n1 = BigUint::from_bytes_le(&msg[16..32]);
+    let msg_n2 = BigUint::from_bytes_le(&msg[0..16]);
+    println!("msg_n1: {}", msg_n1);
+    println!("msg_n2: {}", msg_n2);
 
-    let enc_key = [0u8; 32];
-    let enc_key_n = BigUint::from_bytes_le(&enc_key);
+    // 252 bits
+    // let enc_key = [0u8; 32];
+    let (enc_key, enc_key_n) = gen_curve_key::<F>();
+    println!("enc_key_n: {}", enc_key_n);
+    // Clamp for 252-bit scalar field
+    
 
-    // let nonce = 0x010203040506070809101112;
-    let nonce = 0;
+    // Encrypt first. Hash moves
+    let out_enc_msg1 = cipher.encrypt(&mut builder, &in_priv_enc_key_exp, &in_priv_orig_msg1_exp);
+    let out_enc_msg2 = cipher.encrypt(&mut builder, &in_priv_enc_key_exp, &in_priv_orig_msg2_exp);
 
-    // encrypt!
-    let mut chacha_gadget = R1csChaCha20::new(&mut builder, 0, nonce);
+    let out_commitment = hash(&mut builder, &[in_priv_enc_key_exp]);
+    let out_msg_hash = hash(&mut builder, &[
+        in_priv_orig_msg1_exp,
+        in_priv_orig_msg2_exp,
+    ]);
 
-    let out_enc_msg = chacha_gadget.encrypt_block(&in_priv_enc_key_exp, &in_priv_orig_msg_exp);
     let gadget = builder.build();
 
     println!("exec");
 
     // in_priv_orig_msg => msg_clamped.into(),
-    let mut values = binary_unsigned_values!(
-        &in_priv_orig_msg => &msg_n.into(),
-        &in_priv_enc_key => &enc_key_n.into()
+    let mut values = values!(
+        in_priv_enc_key => enc_key_n.into(),
+        in_priv_orig_msg1 => msg_n1.into(),
+        in_priv_orig_msg2 => msg_n2.into()
     );
-    let satisfied = gadget.execute(&mut values);
-    assert!(satisfied);
 
     // Get the hash
-    let out_enc_data = profile!("exec circuit", {
-        out_enc_msg.evaluate(&values)
+    let (
+        out_enc_msg1_n,
+        out_enc_msg2_n,
+        out_commitment_n,
+        out_msg_hash_n,
+    ) = profile!("exec circuit", {
+        let satisfied = gadget.execute(&mut values);
+        assert!(satisfied);
+
+        (
+            out_enc_msg1.evaluate(&values),
+            out_enc_msg2.evaluate(&values),
+            out_commitment.evaluate(&values),
+            out_msg_hash.evaluate(&values)
+        )
         // expect_msg_hash.evaluate(&values)
     });
-    println!("out_enc_data {:?}", out_enc_data.to_bytes_le());
-    println!("out_enc_data_n {:?}", out_enc_data.to_biguint());
+    println!("out_enc_msg1: {:?}", out_enc_msg1_n);
+    println!("out_enc_msg2: {:?}", out_enc_msg2_n);
+    println!("out_commitment: {:?}", out_commitment_n);
+    println!("out_msg_hash: {:?}", out_msg_hash_n);
 
     println!("enc");
-    let nonce_data: [u8; 12] = nonce.to_be_bytes()[4..16].try_into().unwrap();
-    println!("nd {:?}", nonce_data);
-    let mut msg_enc = msg.clone();
-    // ChaCha8::new_from_slices(&enc_key, &nonce_data).unwrap().apply_keystream(&mut msg_enc);
-    encrypt_block(&enc_key, &mut msg_enc, 0, &nonce_data);
-    println!("msg_enc {:?}", msg_enc);
-    println!("msg_enc_n le {:?}", BigUint::from_bytes_le(&msg_enc));
-    println!("msg_enc_n be {:?}", BigUint::from_bytes_be(&msg_enc));
 
     let mut public_wires = HashSet::new();
     public_wires.insert(Wire::ONE);
