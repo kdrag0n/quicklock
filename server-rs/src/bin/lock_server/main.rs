@@ -16,6 +16,7 @@ mod pairing;
 mod crypto;
 mod actions;
 mod homeassistant;
+mod request;
 
 use config::CONFIG;
 
@@ -42,7 +43,7 @@ async fn main() {
 
     let addr = SocketAddr::from_str("0.0.0.0:3002").unwrap();
     axum::Server::bind(&addr)
-        .serve(app.into_make_service())
+        .serve(app.into_make_service_with_connect_info::<SocketAddr>())
         .await
         .unwrap();
 }

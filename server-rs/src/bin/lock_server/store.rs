@@ -1,3 +1,5 @@
+use qlock::serialize::base64 as serde_b64;
+
 use std::fs::File;
 use std::io;
 use std::io::BufReader;
@@ -13,6 +15,9 @@ pub struct PairedDevice {
     pub public_key: String,
     // For adding a new device. This one requires protected confirmation, verified by attestation
     pub delegation_key: String,
+    // For decrypting request envelopes
+    #[serde(with = "serde_b64")]
+    pub enc_key: Vec<u8>,
     // When this device's access expires (for temporary access)
     pub expires_at: u64,
     // Device that authorized this. Null for initial setup

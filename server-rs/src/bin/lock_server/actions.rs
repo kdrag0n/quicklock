@@ -1,10 +1,11 @@
 use lazy_static::lazy_static;
 use qlock::error::AppResult;
 use serde::{Deserialize, Serialize};
+use std::net::SocketAddr;
 use std::time::Duration;
 use anyhow::anyhow;
 use axum::{Extension, Json, Router};
-use axum::extract::Path;
+use axum::extract::{Path, ConnectInfo};
 use axum::response::IntoResponse;
 use axum::routing::post;
 use dashmap::DashMap;
@@ -12,11 +13,12 @@ use tracing::{error, info};
 use tokio::time::sleep;
 use qlock::checks::require;
 use qlock::time::now;
+use crate::request::SignedRequestEnvelope;
 use crate::{CONFIG, homeassistant};
-use crate::crypto::{generate_secret, verify_bls_signature_str, verify_ec_signature_str};
-use crate::store::{STORE};
+use crate::crypto::generate_secret;
+use crate::store::STORE;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 struct UnlockChallenge {
     id: String,
@@ -28,15 +30,6 @@ struct UnlockChallenge {
 #[serde(rename_all = "camelCase")]
 struct UnlockStartRequest {
     entity_id: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct UnlockFinishRequest {
-    // Challenge ID is in URL
-    public_key: String,
-    bls_signature: String,
-    ec_signature: String,
 }
 
 lazy_static! {
@@ -60,23 +53,20 @@ async fn start_unlock(req: Json<UnlockStartRequest>) -> AppResult<impl IntoRespo
 }
 
 async fn finish_unlock(
-    req: Json<UnlockFinishRequest>,
+    envelope: Json<SignedRequestEnvelope>,
     Path(id): Path<String>,
     client: Extension<reqwest::Client>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
 ) -> AppResult<impl IntoResponse> {
+    let req: UnlockChallenge = envelope.open(&addr)?;
     println!("Finish unlock: {:?}", req);
 
     let (_, challenge) = UNLOCK_CHALLENGES.remove(&id)
         .ok_or_else(|| anyhow!("Challenge not found"))?;
+    require(req == challenge)?;
 
-    let device = STORE.get_device_for_entity(&req.public_key, &challenge.entity_id)
-        .ok_or_else(|| anyhow!("Device not found or not allowed"))?;
-    let challenge_str = serde_json::to_string(&challenge)?;
-    verify_ec_signature_str(&challenge_str, &device.public_key, &req.ec_signature)?;
-
-    if let Some(bls_pk) = device.bls_public_key {
-        verify_bls_signature_str(&challenge_str, &bls_pk, &req.bls_signature)?;
-    }
+    STORE.get_device_for_entity(&envelope.device_id, &challenge.entity_id)
+        .ok_or_else(|| anyhow!("Entity not allowed"))?;
 
     // Verify timestamp
     require((now() - challenge.timestamp) <= CONFIG.time_grace_period)?;

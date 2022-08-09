@@ -9,6 +9,4 @@ pub struct AuditClientState {
     pub bls_sk: Vec<u8>,
     #[serde(with = "serde_b64")]
     pub enc_key: Vec<u8>,
-    #[serde(with = "serde_b64")]
-    pub enc_commit_nonce: Vec<u8>,
 }

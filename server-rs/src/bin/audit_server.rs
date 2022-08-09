@@ -17,7 +17,7 @@ async fn main() {
 
     let addr = SocketAddr::from_str("0.0.0.0:9001").unwrap();
     axum::Server::bind(&addr)
-        .serve(app.into_make_service())
+        .serve(app.into_make_service_with_connect_info::<SocketAddr>())
         .await
         .unwrap();
 }

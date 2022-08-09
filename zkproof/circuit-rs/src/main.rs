@@ -573,11 +573,11 @@ fn main() {
             assert_gadget.prove(&inputs, &outputs)
         });
 
-        let file = File::create("proof.json").unwrap();
-        serde_json::to_writer(file, &proof).unwrap();
+        // let file = File::create("proof.json").unwrap();
+        // serde_json::to_writer(file, &proof).unwrap();
 
-        let file = File::create("proof.bin").unwrap();
-        bincode::serialize_into(&file, &proof).unwrap();
+        // let file = File::create("proof.bin").unwrap();
+        // bincode::serialize_into(&file, &proof).unwrap();
     
         let satisfied = profile!("verify", {
             assert_gadget.verify(&proof, &outputs)

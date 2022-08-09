@@ -1,12 +1,13 @@
 use std::fs::File;
 use std::io;
 use std::io::BufReader;
-use std::time::SystemTime;
 use dashmap::DashMap;
 use once_cell::sync::Lazy;
 use serde::{Serialize, Deserialize};
 use tracing::{debug};
 use crate::serialize::{base64 as serde_b64};
+
+use super::RequestEnvelope;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PairedDevice {
@@ -18,11 +19,7 @@ pub struct PairedDevice {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LogEvent {
     pub id: String,
-    pub timestamp: SystemTime,
-    #[serde(with = "serde_b64")]
-    pub enc_message: Vec<u8>,
-    #[serde(with = "serde_b64")]
-    pub enc_nonce: Vec<u8>,
+    pub envelope: RequestEnvelope,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

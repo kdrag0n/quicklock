@@ -1,22 +1,27 @@
+use std::fmt::Debug;
+use std::net::SocketAddr;
+
 use anyhow::anyhow;
 use axum::response::IntoResponse;
 use axum::{Json, Router};
-use axum::extract::Path;
+use axum::extract::{Path, ConnectInfo};
 use axum::routing::{get, post};
 use dashmap::DashMap;
 use lazy_static::lazy_static;
 use parking_lot::Mutex;
 use qrcode::QrCode;
-use qrcode::render::unicode::{Dense1x2};
+use qrcode::render::unicode::Dense1x2;
 use ring::hmac;
 use qlock::checks::require;
+use crate::request::SignedRequestEnvelope;
 use crate::store::{PairedDevice, STORE};
 use qlock::error::{AppResult, Error, HttpError};
 use serde::{Serialize, Deserialize};
 use qlock::time::now;
 use crate::attestation::verify_chain;
 use crate::CONFIG;
-use crate::crypto::{generate_secret, verify_bls_signature_str, verify_ec_signature_str};
+use crate::crypto::{generate_secret};
+use qlock::serialize::base64 as serde_b64;
 
 lazy_static! {
     static ref PAIRING_CHALLENGES: DashMap<String, PairingChallenge> = DashMap::new();
@@ -50,6 +55,8 @@ struct PairFinishPayload {
     pub challenge_id: String,
     pub public_key: String,
     pub delegation_key: String,
+    #[serde(with = "serde_b64")]
+    pub enc_key: Vec<u8>,
     pub bls_public_key: Option<String>,
     pub main_attestation_chain: Vec<String>,
     pub delegation_attestation_chain: Vec<String>,
@@ -70,15 +77,6 @@ struct Delegation {
     pub allowed_entities: Option<Vec<String>>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct SignedDelegation {
-    pub device: String,
-    pub delegation: String,
-    pub bls_signature: String,
-    pub ec_signature: String,
-}
-
 fn finish_pair(
     req: &PairFinishPayload,
     delegated_by: Option<String>,
@@ -92,6 +90,7 @@ fn finish_pair(
     FINISH_PAYLOADS.remove(&challenge.id);
 
     require(challenge.is_initial == delegated_by.is_none())?;
+    require(req.enc_key.len() == 32)?;
 
     // Verify timestamp
     challenge.validate()?;
@@ -121,6 +120,7 @@ fn finish_pair(
     STORE.add_device(PairedDevice {
         public_key: req.public_key.clone(),
         delegation_key: req.delegation_key.clone(),
+        enc_key: req.enc_key.clone(),
         bls_public_key: req.bls_public_key.clone(),
         // Params
         expires_at,
@@ -196,32 +196,25 @@ async fn post_finish_payload(
 
 async fn finish_delegated(
     Path(id): Path<String>,
-    req: Json<SignedDelegation>,
+    envelope: Json<SignedRequestEnvelope>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
 ) -> AppResult<impl IntoResponse> {
+    let req: Delegation = envelope.open_for_delegation(&addr)?;
     println!("Finish delegated pair: {:?}", req);
-    let device = STORE.get_device(&req.device)
-        .ok_or_else(|| anyhow!("Device not found"))?;
-    verify_ec_signature_str(&req.delegation, &device.delegation_key, &req.ec_signature)?;
-
-    if let Some(bls_pk) = device.bls_public_key {
-        verify_bls_signature_str(&req.delegation, &bls_pk, &req.bls_signature)?;
-    }
-
-    let del: Delegation = serde_json::from_str(&req.delegation)?;
 
     // Prevent delegator from changing request
     {
         let orig_payload = FINISH_PAYLOADS.get(&id)
             .ok_or(HttpError::NotFound)?;
-        require(*orig_payload == del.finish_payload)?;
+        require(*orig_payload == req.finish_payload)?;
     }
 
-    let payload: PairFinishPayload = serde_json::from_str(&del.finish_payload)?;
+    let payload: PairFinishPayload = serde_json::from_str(&req.finish_payload)?;
     finish_pair(
         &payload,
-        Some(req.device.clone()),
-        del.expires_at,
-        del.allowed_entities,
+        Some(envelope.device_id.clone()),
+        req.expires_at,
+        req.allowed_entities,
     )?;
 
     Ok(Json(()))

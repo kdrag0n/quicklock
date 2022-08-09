@@ -1,9 +1,9 @@
 use anyhow::anyhow;
 use bls_signatures::{PublicKey, Serialize, Signature};
-use ring::{signature};
+use ring::signature;
 use ring::signature::UnparsedPublicKey;
 use spki::SubjectPublicKeyInfo;
-use qlock::bls::{verify_multi};
+use qlock::bls::verify_multi;
 use qlock::checks::require;
 use qlock::error::AppResult;
 

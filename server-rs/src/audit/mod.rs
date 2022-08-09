@@ -1,16 +1,18 @@
 use crate::error::AppResult;
 use crate::serialize::base64 as serde_b64;
+use crate::time::now;
 
-use std::time::SystemTime;
+use std::net::SocketAddr;
 use anyhow::anyhow;
 use bls_signatures::{PrivateKey, PublicKey, Serialize as BlsSerialize, Signature};
+use chacha20poly1305::{aead::{Aead, Nonce}, XChaCha20Poly1305, KeyInit};
 use rand::rngs::OsRng;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use base64;
 use ulid::Ulid;
 use std::str;
 use axum::{Json, Router};
-use axum::extract::Path;
+use axum::extract::{Path, ConnectInfo};
 use axum::response::IntoResponse;
 use axum::routing::{get, post};
 use crate::audit::store::{LogEvent, PairedDevice, STORE};
@@ -23,13 +25,13 @@ pub mod client;
 #[serde(rename_all = "camelCase")]
 pub struct RegisterRequest {
     pub client_pk: String,
-    #[serde(with = "serde_b64")]
-    pub client_msg_enc_commit: Vec<u8>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RegisterResponse {
+    #[serde(with = "serde_b64")]
+    pub server_pk: Vec<u8>,
     #[serde(with = "serde_b64")]
     pub aggregate_pk: Vec<u8>,
 }
@@ -39,11 +41,7 @@ pub struct RegisterResponse {
 pub struct SignRequest {
     pub client_pk: String,
     #[serde(with = "serde_b64")]
-    pub enc_message: Vec<u8>,
-    #[serde(with = "serde_b64")]
-    pub enc_nonce: Vec<u8>,
-    #[serde(with = "serde_b64")]
-    pub message_hash: Vec<u8>,
+    pub envelope: Vec<u8>,
     #[serde(with = "serde_b64")]
     pub client_sig: Vec<u8>,
 }
@@ -52,7 +50,71 @@ pub struct SignRequest {
 #[serde(rename_all = "camelCase")]
 pub struct SignResponse {
     #[serde(with = "serde_b64")]
-    pub aggregate_sig: Vec<u8>,
+    pub new_envelope: Vec<u8>, // with metadata injected
+    #[serde(with = "serde_b64")]
+    pub server_sig: Vec<u8>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RequestEnvelope {
+    // XChaCha20-Poly1305
+    #[serde(with = "serde_b64")]
+    pub enc_payload: Vec<u8>,
+    #[serde(with = "serde_b64")]
+    pub enc_nonce: Vec<u8>, // 192 bits
+    // Added by audit server
+    pub public_metadata: Option<RequestPublicMetadata>,
+}
+
+impl RequestEnvelope {
+    pub fn seal<T>(request: &T, enc_key: &[u8]) -> AppResult<RequestEnvelope>
+    where
+        T: Serialize
+    {
+        let payload = serde_json::to_string(request)?;
+
+        let cipher = XChaCha20Poly1305::new_from_slice(enc_key)
+            .map_err(|_| anyhow!("Bad key"))?;
+        let nonce_bytes: [u8; 24] = rand::random();
+        let nonce = <Nonce<XChaCha20Poly1305>>::from_slice(&nonce_bytes);
+        let enc_payload = cipher.encrypt(nonce, payload.as_bytes())
+            .map_err(|_| anyhow!("Failed to encrypt"))?;
+
+        Ok(RequestEnvelope {
+            enc_payload,
+            enc_nonce: nonce_bytes.into(),
+            // Filled by audit server
+            public_metadata: None,
+        })
+    }
+
+    pub fn open<T>(&self, enc_key: &[u8]) -> AppResult<T>
+    where
+        T: DeserializeOwned
+    {
+        // Decrypt request contents
+        let cipher = XChaCha20Poly1305::new_from_slice(enc_key)
+            .map_err(|_| anyhow!("Bad key"))?;
+        let nonce = <Nonce<XChaCha20Poly1305>>::from_slice(&self.enc_nonce);
+        let payload = cipher.decrypt(nonce, &*self.enc_payload)
+            .map_err(|_| anyhow!("Failed to decrypt"))?;
+
+        // Decode payload
+        let request = serde_json::from_slice(&payload)?;
+        Ok(request)
+    }
+
+    pub fn serialize(&self) -> String {
+        serde_json::to_string(self).unwrap()
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RequestPublicMetadata {
+    pub client_ip: String,
+    pub timestamp: u64,
 }
 
 async fn register(req: Json<RegisterRequest>) -> AppResult<impl IntoResponse> {
@@ -71,11 +133,15 @@ async fn register(req: Json<RegisterRequest>) -> AppResult<impl IntoResponse> {
     let server_pk = sk.public_key();
     let agg_pk = aggregate_pks_multi(&[&client_pk, &server_pk]);
     Ok(Json(RegisterResponse {
+        server_pk: server_pk.as_bytes(),
         aggregate_pk: agg_pk.as_bytes(),
     }))
 }
 
-async fn sign(req: Json<SignRequest>) -> AppResult<impl IntoResponse> {
+async fn sign(
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    req: Json<SignRequest>,
+) -> AppResult<impl IntoResponse> {
     println!("Sign: {:?}", req);
 
     let device = STORE.get_device(&req.client_pk)
@@ -85,29 +151,45 @@ async fn sign(req: Json<SignRequest>) -> AppResult<impl IntoResponse> {
     let client_pk_data = base64::decode(&device.client_pk)?;
     let client_pk = PublicKey::from_bytes(&client_pk_data)?;
     let client_sig = Signature::from_bytes(&req.client_sig)?;
-    if !client_pk.verify(client_sig, &req.message_hash) {
+    if !client_pk.verify(client_sig, &req.envelope) {
         return Err(anyhow!("Client signature invalid").into());
     }
+
+    // Add metadata
+    let metadata = RequestPublicMetadata {
+        client_ip: addr.ip().to_string(),
+        timestamp: now(),
+    };
+    let mut envelope: RequestEnvelope = serde_json::from_slice(&req.envelope)?;
+    envelope = RequestEnvelope {
+        public_metadata: Some(metadata),
+        ..envelope
+    };
 
     // Log request
     STORE.log_event(&device.client_pk, LogEvent {
         id: Ulid::new().into(),
-        timestamp: SystemTime::now(),
-        enc_message: req.enc_message.clone(),
-        enc_nonce: req.enc_nonce.clone(),
+        envelope: envelope.clone(),
     });
 
     // Sign payload
+    let new_envelope = envelope.serialize();
     let sk = PrivateKey::from_bytes(&device.server_sk)?;
-    let sig = sk.sign(&req.message_hash);
+    let sig = sk.sign(new_envelope.as_bytes());
+
     // Aggregate signature
+    /*
     let agg_sig = aggregate_sigs_multi(&[
         (&client_sig, &client_pk),
         (&sig, &sk.public_key()),
     ]);
+    */
 
+    // Send our signature to the client for aggregation. Client needs to re-sign
+    // with the new envelope that includes metadata.
     Ok(Json(SignResponse {
-        aggregate_sig: agg_sig.as_bytes(),
+        new_envelope: serde_json::to_vec(&envelope)?,
+        server_sig: sig.as_bytes(),
     }))
 }
 
