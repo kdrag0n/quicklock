@@ -1,4 +1,5 @@
 use lazy_static::lazy_static;
+use qlock::envelope::SignedRequestEnvelope;
 use qlock::error::AppResult;
 use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
@@ -13,7 +14,7 @@ use tracing::{error, info};
 use tokio::time::sleep;
 use qlock::checks::require;
 use qlock::time::now;
-use crate::request::SignedRequestEnvelope;
+use crate::request::EnvelopeOpen;
 use crate::{CONFIG, homeassistant};
 use crate::crypto::generate_secret;
 use crate::store::STORE;
