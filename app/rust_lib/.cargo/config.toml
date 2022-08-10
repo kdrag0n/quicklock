@@ -1,0 +1,5 @@
+[target.aarch64-linux-android]
+linker = "/home/dragon/code/android/sdk/ndk/24.0.8215888/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android32-clang++"
+
+[target.armv7-linux-androideabi]
+linker = "/home/dragon/code/android/sdk/ndk/24.0.8215888/toolchains/llvm/prebuilt/linux-x86_64/bin/armv7a-linux-androideabi32-clang++"

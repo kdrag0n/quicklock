@@ -1,0 +1,19 @@
+[package]
+name = "qlock_android"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "qlock_android"
+crate-type = ["cdylib"]
+
+[dependencies]
+android_logger = "0.11.1"
+jni-sys = "0.3.0"
+log = "0.4.17"
+log-panics = "2.1.0"
+rifgen = "0.1.51"
+
+[build-dependencies]
+flapigen = "0.6.0-pre9"
+rifgen = "0.1.51"

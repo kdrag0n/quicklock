@@ -4,6 +4,7 @@ plugins {
     id 'kotlin-kapt'
     id 'dagger.hilt.android.plugin'
     id 'com.google.devtools.ksp'
+    id 'org.mozilla.rust-android-gradle.rust-android'
 }
 
 android {
@@ -59,6 +60,19 @@ android {
             path file('src/main/cpp/CMakeLists.txt')
             version '3.22.1'
         }
+    }
+}
+
+cargo {
+    module = '../rust_lib'
+    libname = 'qlock_android'
+    // TODO: add more later
+    targets = ['arm64']
+}
+
+tasks.whenTaskAdded { task ->
+    if (task.name.startsWith('javaPreCompile')) {
+        task.dependsOn 'cargoBuild'
     }
 }
 
