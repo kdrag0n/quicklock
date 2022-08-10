@@ -1,3 +1,0 @@
-[submodule "app/app/src/main/cpp/external/bls"]
-	path = app/app/src/main/cpp/external/bls
-	url = https://github.com/Chia-Network/bls-signatures
