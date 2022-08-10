@@ -11,4 +11,6 @@ class SettingsRepository @Inject constructor(
     @ApplicationContext context: Context,
 ) : KotprefModel(context) {
     var blsPrivateKey by nullableStringPref()
+    var blsServerPublicKey by nullableStringPref()
+    var encKey by nullableStringPref()
 }

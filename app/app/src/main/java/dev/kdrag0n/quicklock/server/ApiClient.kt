@@ -2,6 +2,7 @@ package dev.kdrag0n.quicklock.server
 
 import com.squareup.moshi.Moshi
 import dev.kdrag0n.quicklock.CryptoService
+import dev.kdrag0n.quicklock.NativeLib
 import dev.kdrag0n.quicklock.toBase64
 import dev.kdrag0n.quicklock.util.EventFlow
 import dev.kdrag0n.quicklock.util.toBase1024
@@ -35,13 +36,12 @@ class ApiClient @Inject constructor(
     private val service: ApiService,
     private val auditor: AuditService,
     private val crypto: CryptoService,
-    moshi: Moshi,
+    private val moshi: Moshi,
 ) {
-    private val delegationAdapter = moshi.adapter(Delegation::class.java)
     private val initialQrAdapter = moshi.adapter(InitialPairQr::class.java)
     private val delegatedQrAdapter = moshi.adapter(DelegatedPairQr::class.java)
     private val pairFinishAdapter = moshi.adapter(PairFinishPayload::class.java)
-    private val unlockChallengeAdapter = moshi.adapter(UnlockChallenge::class.java)
+    private val envelopeAdapter = moshi.adapter(RequestEnvelope::class.java)
 
     var currentPairState: PairState? = null
     var currentDelegationState: DelegationState? = null
@@ -87,17 +87,18 @@ class ApiClient @Inject constructor(
         val mainKey = crypto.generateKey(challenge.id)
         val delegationKey = crypto.generateKey(challenge.id, isDelegation = true)
 
-        crypto.generateBlsKey()
-        val clientBlsPk = crypto.blsPublicKeyEncoded
-        val serverBlsPk = auditor.register(RegisterRequest(
+        crypto.generateKeys()
+        val (serverBlsPk, aggregateBlsPk) = auditor.register(RegisterRequest(
             clientPk = crypto.blsPublicKeyEncoded,
-        )).unwrap().serverPk
+        )).unwrap()
+        crypto.saveServerKey(serverBlsPk)
 
         val req = PairFinishPayload(
             challengeId = challenge.id,
             publicKey = mainKey.encoded.toBase64(),
             delegationKey = delegationKey.encoded.toBase64(),
-            blsPublicKeys = listOf(clientBlsPk, serverBlsPk),
+            encKey = crypto.encKeyBytes,
+            blsPublicKey = aggregateBlsPk,
             mainAttestationChain = crypto.getAttestationChain(),
             delegationAttestationChain = crypto.getAttestationChain(CryptoService.DELEGATION_ALIAS),
         )
@@ -163,15 +164,6 @@ class ApiClient @Inject constructor(
         )
     }
 
-    suspend fun signBlsAggregate(data: ByteArray): String {
-        val (aggSig) = auditor.sign(SignRequest(
-            clientPk = crypto.blsPublicKeyEncoded,
-            message = data,
-            clientSig = crypto.signBls(data),
-        )).unwrap()
-        return aggSig
-    }
-
     fun prepareDelegationSignature(): Signature {
         return crypto.prepareSignature(alias = CryptoService.DELEGATION_ALIAS)
     }
@@ -184,30 +176,54 @@ class ApiClient @Inject constructor(
             expiresAt = expiresAt,
             allowedEntities = allowedEntities,
         )
-        val delegationData = delegationAdapter.toJson(delegation)
-        val message = delegationData.encodeToByteArray()
 
-        val signed = SignedDelegation(
-            device = crypto.publicKeyEncoded,
-            delegation = delegationData,
-            blsSignature = signBlsAggregate(message),
-            ecSignature = crypto.finishSignature(sig, delegationData),
-        )
-        service.finishDelegatedPair(req.challengeId, signed)
+        service.finishDelegatedPair(req.challengeId, sealAndSign(delegation, signer = sig))
         currentDelegationState = null
     }
 
     suspend fun unlock(entityId: String) {
         val challenge = service.startUnlock(UnlockStartRequest(entityId)).unwrap()
         require(challenge.entityId == entityId)
+        service.finishUnlock(challenge.id, sealAndSign(challenge))
+    }
 
-        val challengeData = unlockChallengeAdapter.toJson(challenge)
-        val request = UnlockFinishRequest(
-            publicKey = crypto.publicKeyEncoded,
-            blsSignature = signBlsAggregate(challengeData.encodeToByteArray()),
-            ecSignature = crypto.signPayload(challengeData),
+    private suspend inline fun <reified T> sealAndSign(
+        request: T,
+        signer: Signature? = null,
+    ): SignedRequestEnvelope<T> {
+        // Seal unsigned envelope
+        val requestData = moshi.adapter(T::class.java).toJson(request)
+        val envelopeJson = NativeLib.envelopeSeal(crypto.encKeyBytes, requestData)
+        val envelopeData = envelopeJson.encodeToByteArray()
+        val envelope = envelopeAdapter.fromJson(envelopeJson)!!
+
+        val (newEnvelopeData, serverSig) = auditor.sign(SignRequest(
+            clientPk = crypto.blsPublicKeyEncoded,
+            envelope = envelopeData,
+            clientSig = crypto.signBls(envelopeData),
+        )).unwrap()
+
+        // Verify new envelope
+        val newEnvelope = envelopeAdapter.fromJson(newEnvelopeData.decodeToString())!!
+        require(newEnvelope.encPayload contentEquals envelope.encPayload)
+        require(newEnvelope.encNonce contentEquals envelope.encNonce)
+
+        // Sign and aggregate BLS
+        val clientBlsSig = crypto.signBls(newEnvelopeData)
+        val blsSig = crypto.aggregateBls(clientBlsSig, serverSig)
+
+        // Sign EC
+        val ecSig = crypto.finishSignature(
+            sig = signer ?: crypto.prepareSignature(),
+            payload = newEnvelopeData,
         )
-        service.finishUnlock(challenge.id, request)
+
+        return SignedRequestEnvelope(
+            deviceId = crypto.publicKeyEncoded,
+            envelope = newEnvelope,
+            blsSignature = blsSig,
+            ecSignature = ecSig,
+        )
     }
 }
 

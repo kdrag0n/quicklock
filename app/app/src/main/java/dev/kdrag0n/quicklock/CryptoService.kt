@@ -32,25 +32,42 @@ class CryptoService @Inject constructor(
     val delegationKeyEncoded
         get() = getKeyEntry(alias = DELEGATION_ALIAS).certificate.publicKey.encoded.toBase64()
 
-    val blsPublicKeyEncoded: String
+    val blsPublicKeyBytes: ByteArray
         get() {
             val sk = settings.blsPrivateKey!!.decodeBase64()!!.toByteArray()
-            val pk = NativeLib.blsDerivePublicKey(sk)
-            return pk.toBase64()
+            return NativeLib.blsDerivePublicKey(sk)
         }
 
-    fun generateBlsKey(): ByteArray {
-        val seed = ByteArray(32)
-        SecureRandom.getInstanceStrong().nextBytes(seed)
-        val key = NativeLib.blsGeneratePrivateKey(seed)
-        settings.blsPrivateKey = key.toBase64()
-        return key
+    val blsPublicKeyEncoded
+        get() = blsPublicKeyBytes.toBase64()
+
+    val encKeyBytes
+        get() = settings.encKey!!.decodeBase64()!!.toByteArray()
+
+    fun generateKeys() {
+        // Encryption
+        val encKey = ByteArray(32)
+        SecureRandom.getInstanceStrong().nextBytes(encKey)
+        settings.encKey = encKey.toBase64()
+
+        // BLS
+        val blsKey = NativeLib.blsGeneratePrivateKey()
+        settings.blsPrivateKey = blsKey.toBase64()
     }
 
     fun signBls(data: ByteArray): ByteArray {
         val sk = settings.blsPrivateKey!!.decodeBase64()!!.toByteArray()
         val sig = NativeLib.blsSignMessage(sk, data)
         return sig
+    }
+
+    fun saveServerKey(serverBlsPk: ByteArray) {
+        settings.blsServerPublicKey = serverBlsPk.toBase64()
+    }
+
+    fun aggregateBls(clientSig: ByteArray, serverSig: ByteArray): ByteArray {
+        val serverPk = settings.blsServerPublicKey!!.decodeBase64()!!.toByteArray()
+        return NativeLib.blsAggregateSigs(blsPublicKeyBytes, clientSig, serverPk, serverSig)
     }
 
     fun generateKey(challengeId: String, isDelegation: Boolean = false): PublicKey {
@@ -90,15 +107,12 @@ class CryptoService @Inject constructor(
         return sig
     }
 
-    fun finishSignature(sig: Signature, payload: String): String {
-        val bytes = payload.encodeToByteArray()
-        sig.update(bytes)
-
-        val signature = sig.sign()
-        return signature.toBase64()
+    fun finishSignature(sig: Signature, payload: ByteArray): ByteArray {
+        sig.update(payload)
+        return sig.sign()
     }
 
-    fun signPayload(payload: String, alias: String = ALIAS): String {
+    fun signPayload(payload: ByteArray, alias: String = ALIAS): ByteArray {
         val sig = prepareSignature(alias)
         return finishSignature(sig, payload)
     }

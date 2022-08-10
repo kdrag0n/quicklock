@@ -20,17 +20,19 @@ data class RegisterRequest(
 
 @JsonClass(generateAdapter = true)
 data class RegisterResponse(
-    val serverPk: String,
+    val serverPk: ByteArray,
+    val aggregatePk: String,
 )
 
 @JsonClass(generateAdapter = true)
 data class SignRequest(
     val clientPk: String,
-    val message: ByteArray,
+    val envelope: ByteArray,
     val clientSig: ByteArray,
 )
 
 @JsonClass(generateAdapter = true)
 data class SignResponse(
-    val aggregateSig: String,
+    val newEnvelope: ByteArray,
+    val serverSig: ByteArray,
 )

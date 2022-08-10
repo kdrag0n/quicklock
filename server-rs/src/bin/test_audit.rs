@@ -1,6 +1,6 @@
 use bls_signatures::{Serialize as BlsSerialize};
 use reqwest::blocking::Client;
-use qlock::{audit::{RegisterRequest, RegisterResponse, SignRequest, SignResponse, RequestEnvelope}, checks::require, bls::aggregate_sigs_multi};
+use qlock::{audit::{RegisterRequest, RegisterResponse, SignRequest, SignResponse}, checks::require, bls::aggregate_sigs_multi, envelope::RequestEnvelope};
 use qlock::audit::client::AuditClientState;
 use qlock::audit::store::LogEvent;
 use qlock::bls::verify_multi;

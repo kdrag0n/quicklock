@@ -29,7 +29,7 @@ interface ApiService {
     @POST("/api/pair/delegated/{challengeId}/finish")
     suspend fun finishDelegatedPair(
         @Path("challengeId") challengeId: String,
-        @Body request: SignedDelegation,
+        @Body request: SignedRequestEnvelope<Delegation>,
     ): Response<Unit>
 
     @POST("/api/pair/get_challenge")
@@ -41,17 +41,37 @@ interface ApiService {
     @POST("/api/unlock/{challengeId}/finish")
     suspend fun finishUnlock(
         @Path("challengeId") challengeId: String,
-        @Body request: UnlockFinishRequest,
+        @Body request: SignedRequestEnvelope<UnlockChallenge>,
     ): Response<Unit>
 }
 
+/*
+ * Audit/generic
+ */
 @JsonClass(generateAdapter = true)
-data class Entity(
-    val id: String,
-    val name: String,
-    val haEntity: String,
+data class RequestEnvelope(
+    val encPayload: ByteArray,
+    val encNonce: ByteArray,
+    val publicMetadata: RequestPublicMetadata?,
 )
 
+@JsonClass(generateAdapter = true)
+data class RequestPublicMetadata(
+    val clientIp: String,
+    val timestamp: Long,
+)
+
+@JsonClass(generateAdapter = true)
+data class SignedRequestEnvelope<T>(
+    val deviceId: String,
+    val envelope: RequestEnvelope,
+    val blsSignature: ByteArray,
+    val ecSignature: ByteArray,
+)
+
+/*
+ * Pairing
+ */
 @JsonClass(generateAdapter = true)
 data class Challenge(
     val id: String,
@@ -74,7 +94,8 @@ data class PairFinishPayload(
     val challengeId: String,
     val publicKey: String,
     val delegationKey: String,
-    val blsPublicKeys: List<String>,
+    val encKey: ByteArray,
+    val blsPublicKey: String?,
     val mainAttestationChain: List<String>,
     val delegationAttestationChain: List<String>,
 )
@@ -87,17 +108,19 @@ data class Delegation(
 )
 
 @JsonClass(generateAdapter = true)
-data class SignedDelegation(
-    val device: String,
-    val delegation: String,
-    val blsSignature: String,
-    val ecSignature: String,
-)
-
-@JsonClass(generateAdapter = true)
 data class InitialPairFinishRequest(
     val finishPayload: String,
     val mac: String,
+)
+
+/*
+ * Actions
+ */
+@JsonClass(generateAdapter = true)
+data class Entity(
+    val id: String,
+    val name: String,
+    val haEntity: String,
 )
 
 @JsonClass(generateAdapter = true)
@@ -110,12 +133,4 @@ data class UnlockChallenge(
 @JsonClass(generateAdapter = true)
 data class UnlockStartRequest(
     val entityId: String,
-)
-
-@JsonClass(generateAdapter = true)
-data class UnlockFinishRequest(
-    // Challenge ID is in URL
-    val publicKey: String,
-    val blsSignature: String,
-    val ecSignature: String,
 )

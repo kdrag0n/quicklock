@@ -1,7 +1,8 @@
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::BufReader;
-use once_cell::sync::{Lazy};
+use once_cell::sync::Lazy;
+use qlock::lock::model::Entity;
 use serde::{Serialize, Deserialize};
 
 fn time_grace_period() -> u64 { 5 * 60 * 1000 } // 5 min
@@ -20,14 +21,6 @@ pub struct Config {
     pub relock_delay: u64,
     #[serde(default = "require_audit")]
     pub require_audit: bool,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct Entity {
-    pub id: String,
-    pub name: String,
-    pub ha_entity: String,
 }
 
 pub static CONFIG: Lazy<Config> = Lazy::new(|| Config::load().unwrap());

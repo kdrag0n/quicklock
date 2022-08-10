@@ -2,6 +2,7 @@ pub mod error;
 pub mod serialize;
 pub mod checks;
 pub mod log;
+pub mod lock;
 pub mod audit;
 pub mod bls;
 pub mod envelope;

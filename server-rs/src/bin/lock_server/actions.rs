@@ -1,7 +1,7 @@
 use lazy_static::lazy_static;
 use qlock::envelope::SignedRequestEnvelope;
 use qlock::error::AppResult;
-use serde::{Deserialize, Serialize};
+use qlock::lock::model::{UnlockChallenge, UnlockStartRequest};
 use std::net::SocketAddr;
 use std::time::Duration;
 use anyhow::anyhow;
@@ -18,20 +18,6 @@ use crate::request::EnvelopeOpen;
 use crate::{CONFIG, homeassistant};
 use crate::crypto::generate_secret;
 use crate::store::STORE;
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(rename_all = "camelCase")]
-struct UnlockChallenge {
-    id: String,
-    timestamp: u64,
-    entity_id: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct UnlockStartRequest {
-    entity_id: String,
-}
 
 lazy_static! {
     static ref UNLOCK_CHALLENGES: DashMap<String, UnlockChallenge> = DashMap::new();

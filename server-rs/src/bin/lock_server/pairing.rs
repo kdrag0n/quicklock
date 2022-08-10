@@ -1,4 +1,3 @@
-use std::fmt::Debug;
 use std::net::SocketAddr;
 
 use anyhow::anyhow;
@@ -10,6 +9,7 @@ use dashmap::DashMap;
 use lazy_static::lazy_static;
 use parking_lot::Mutex;
 use qlock::envelope::SignedRequestEnvelope;
+use qlock::lock::model::{PairFinishPayload, PairingChallenge, InitialPairQr, InitialPairFinishRequest, Delegation};
 use qrcode::QrCode;
 use qrcode::render::unicode::Dense1x2;
 use ring::hmac;
@@ -17,12 +17,10 @@ use qlock::checks::require;
 use crate::request::EnvelopeOpen;
 use crate::store::{PairedDevice, STORE};
 use qlock::error::{AppResult, Error, HttpError};
-use serde::{Serialize, Deserialize};
 use qlock::time::now;
 use crate::attestation::verify_chain;
 use crate::CONFIG;
-use crate::crypto::{generate_secret};
-use qlock::serialize::base64 as serde_b64;
+use crate::crypto::generate_secret;
 
 lazy_static! {
     static ref PAIRING_CHALLENGES: DashMap<String, PairingChallenge> = DashMap::new();
@@ -30,52 +28,14 @@ lazy_static! {
     static ref INITIAL_PAIRING_SECRET: Mutex<Option<String>> = Mutex::new(None);
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct PairingChallenge {
-    id: String,
-    timestamp: u64,
-    is_initial: bool,
+trait Validate {
+    fn validate(&self) -> AppResult<()>;
 }
-impl PairingChallenge {
-    fn validate(&self) -> Result<(), Error> {
+impl Validate for PairingChallenge {
+    fn validate(&self) -> AppResult<()> {
         require(now() - self.timestamp <= CONFIG.time_grace_period)?;
         Ok(())
     }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct InitialPairQr {
-    secret: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct PairFinishPayload {
-    pub challenge_id: String,
-    pub public_key: String,
-    pub delegation_key: String,
-    #[serde(with = "serde_b64")]
-    pub enc_key: Vec<u8>,
-    pub bls_public_key: Option<String>,
-    pub main_attestation_chain: Vec<String>,
-    pub delegation_attestation_chain: Vec<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct InitialPairFinishRequest {
-    pub finish_payload: String,
-    pub mac: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct Delegation {
-    pub finish_payload: String,
-    pub expires_at: u64,
-    pub allowed_entities: Option<Vec<String>>,
 }
 
 fn finish_pair(

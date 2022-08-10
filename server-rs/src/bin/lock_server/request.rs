@@ -1,7 +1,7 @@
 use std::net::SocketAddr;
 
 use anyhow::anyhow;
-use qlock::{error::AppResult, envelope::SignedRequestEnvelope, checks::require, time::now};
+use qlock::{error::AppResult, envelope::SignedRequestEnvelope, checks::{require, require_eq}, time::now};
 use serde::de::DeserializeOwned;
 
 use crate::{crypto::{verify_ec_signature_str, verify_bls_signature_str}, store::STORE, config::CONFIG};
@@ -30,7 +30,7 @@ where
     // Verify public request metadata
     let meta = env.envelope.public_metadata.as_ref()
         .ok_or_else(|| anyhow!("Missing public metadata"))?;
-    require(meta.client_ip == addr.to_string())?;
+    require_eq(&meta.client_ip, &addr.ip().to_string())?;
     require(now().abs_diff(meta.timestamp) <= CONFIG.time_grace_period)?;
 
     env.envelope.open(&device.enc_key)

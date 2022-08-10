@@ -26,12 +26,7 @@ pub struct RequestEnvelope {
 }
 
 impl RequestEnvelope {
-    pub fn seal<T>(request: &T, enc_key: &[u8]) -> AppResult<RequestEnvelope>
-    where
-        T: Serialize
-    {
-        let payload = serde_json::to_string(request)?;
-
+    pub fn seal_raw(payload: &str, enc_key: &[u8]) -> AppResult<RequestEnvelope> {
         let cipher = XChaCha20Poly1305::new_from_slice(enc_key)
             .map_err(|_| anyhow!("Bad key"))?;
         let nonce_bytes: [u8; 24] = rand::random();
@@ -45,6 +40,14 @@ impl RequestEnvelope {
             // Filled by audit server
             public_metadata: None,
         })
+    }
+
+    pub fn seal<T>(request: &T, enc_key: &[u8]) -> AppResult<RequestEnvelope>
+    where
+        T: Serialize
+    {
+        let payload = serde_json::to_string(request)?;
+        Self::seal_raw(&payload, enc_key)
     }
 
     pub fn open<T>(&self, enc_key: &[u8]) -> AppResult<T>
