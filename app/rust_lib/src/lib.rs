@@ -1,3 +1,5 @@
+mod server;
+
 use std::ffi::c_void;
 use jni::{JNIEnv, JavaVM};
 
@@ -83,10 +85,18 @@ pub extern "system" fn Java_dev_kdrag0n_quicklock_NativeLib_envelopeSeal(
 }
 
 #[no_mangle]
+pub extern "system" fn Java_dev_kdrag0n_quicklock_NativeLib_startServer(
+    _: JNIEnv,
+    _: JClass,
+) {
+    server::start_bg();
+}
+
+#[no_mangle]
 pub extern "system" fn JNI_OnLoad(_: JavaVM, _: *const c_void) -> jint {
     android_logger::init_once(
         Config::default()
-            .with_min_level(Level::Debug)
+            .with_min_level(Level::Info)
             .with_tag("RustLib"),
     );
     log_panics::init();

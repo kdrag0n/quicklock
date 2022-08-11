@@ -1,4 +1,5 @@
 use lazy_static::lazy_static;
+use tracing::log::debug;
 use crate::envelope::SignedRequestEnvelope;
 use crate::error::AppResult;
 use crate::lock::model::{UnlockChallenge, UnlockStartRequest};
@@ -25,7 +26,7 @@ lazy_static! {
 }
 
 async fn start_unlock(req: Json<UnlockStartRequest>) -> AppResult<impl IntoResponse> {
-    println!("Start unlock: {:?}", req);
+    debug!("Start unlock: {:?}", req);
 
     CONFIG.entities.get(&req.entity_id)
         .ok_or_else(|| anyhow!("Entity not found"))?;
@@ -47,7 +48,7 @@ async fn finish_unlock(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
 ) -> AppResult<impl IntoResponse> {
     let req: UnlockChallenge = envelope.open(&addr)?;
-    println!("Finish unlock: {:?}", req);
+    debug!("Finish unlock: {:?}", req);
 
     let (_, challenge) = UNLOCK_CHALLENGES.remove(&id)
         .ok_or_else(|| anyhow!("Challenge not found"))?;
@@ -61,7 +62,7 @@ async fn finish_unlock(
 
     // Unlock
     info!("Posting HA unlock");
-    homeassistant::post_lock(&client, true, &challenge.entity_id).await?;
+    // homeassistant::post_lock(&client, true, &challenge.entity_id).await?;
 
     // Re-lock after delay
     tokio::spawn(async move {

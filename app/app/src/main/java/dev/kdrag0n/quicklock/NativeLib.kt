@@ -11,4 +11,6 @@ object NativeLib {
     @JvmStatic external fun blsAggregateSigs(pk1: ByteArray, sig1: ByteArray, pk2: ByteArray, sig2: ByteArray): ByteArray
 
     @JvmStatic external fun envelopeSeal(key: ByteArray, msg: String): String
+
+    @JvmStatic external fun startServer()
 }

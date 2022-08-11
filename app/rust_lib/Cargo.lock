@@ -1202,6 +1202,7 @@ name = "qlock_android"
 version = "0.1.0"
 dependencies = [
  "android_logger",
+ "axum",
  "bls-signatures",
  "jni",
  "jni-sys",
@@ -1209,6 +1210,8 @@ dependencies = [
  "log-panics",
  "qlock",
  "rand",
+ "tokio",
+ "tower-http",
 ]
 
 [[package]]

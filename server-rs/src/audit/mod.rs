@@ -9,6 +9,7 @@ use bls_signatures::{PrivateKey, PublicKey, Serialize as BlsSerialize, Signature
 use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
 use base64;
+use tracing::log::debug;
 use ulid::Ulid;
 use std::str;
 use axum::{Json, Router};
@@ -56,7 +57,7 @@ pub struct SignResponse {
 }
 
 async fn register(req: Json<RegisterRequest>) -> AppResult<impl IntoResponse> {
-    println!("Register: {:?}", req);
+    debug!("Register: {:?}", req);
 
     // Generate server private key for this device
     let client_pk_data = base64::decode(&req.client_pk)?;
@@ -80,7 +81,7 @@ async fn sign(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     req: Json<SignRequest>,
 ) -> AppResult<impl IntoResponse> {
-    println!("Sign: {:?}", req);
+    debug!("Sign: {:?}", req);
 
     let device = STORE.get_device(&req.client_pk)
         .ok_or_else(|| anyhow!("Unknown device"))?;
@@ -133,7 +134,7 @@ async fn sign(
 
 // TODO: auth with replay protection?
 async fn get_logs(Path(client_pk): Path<String>) -> AppResult<impl IntoResponse> {
-    println!("Get logs: {}", client_pk);
+    debug!("Get logs: {}", client_pk);
     Ok(Json(STORE.get_logs(&client_pk)))
 }
 

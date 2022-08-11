@@ -6,6 +6,7 @@ use qlock::audit::store::LogEvent;
 use qlock::bls::verify_multi;
 use qlock::error::AppResult;
 use serde::{Deserialize, Serialize};
+use tracing::log::info;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct TestRequest {
@@ -25,7 +26,7 @@ fn main() -> AppResult<()> {
 
     // Register
     let bls_pk_str = base64::encode(&bls_pk.as_bytes());
-    println!("Register: pk={}", bls_pk_str);
+    debug!("Register: pk={}", bls_pk_str);
     let resp: RegisterResponse = client.post("http://localhost:9001/api/register")
         .json(&RegisterRequest {
             client_pk: bls_pk_str.clone(),
@@ -35,7 +36,7 @@ fn main() -> AppResult<()> {
         .json()?;
     let agg_pk = bls_signatures::PublicKey::from_bytes(&resp.aggregate_pk)?;
     let server_pk = bls_signatures::PublicKey::from_bytes(&resp.server_pk)?;
-    println!("Register -> aggregate_pk={}", base64::encode(&resp.aggregate_pk));
+    debug!("Register -> aggregate_pk={}", base64::encode(&resp.aggregate_pk));
 
     // Sign
     let req = TestRequest {
@@ -47,7 +48,7 @@ fn main() -> AppResult<()> {
     let client_envelope = RequestEnvelope::seal(&req, &enc_key)?;
     let client_envelope_data = client_envelope.serialize();
     let client_sig = bls_sk.sign(client_envelope_data.as_bytes());
-    println!("Sign: msg={} envelope={}", msg, client_envelope_data);
+    debug!("Sign: msg={} envelope={}", msg, client_envelope_data);
     let resp: SignResponse = client.post("http://localhost:9001/api/sign")
         .json(&SignRequest {
             client_pk: bls_pk_str.clone(),
@@ -57,7 +58,7 @@ fn main() -> AppResult<()> {
         .send()?
         .error_for_status()?
         .json()?;
-    println!("Sign -> server_sig={}", base64::encode(&resp.server_sig));
+    debug!("Sign -> server_sig={}", base64::encode(&resp.server_sig));
 
     // Verify & sign new envelope with metadata injected
     let envelope: RequestEnvelope = serde_json::from_slice(&resp.new_envelope)?;
@@ -74,33 +75,33 @@ fn main() -> AppResult<()> {
     ]);
 
     // Verify sig under both PKs
-    println!("Verify agg sig");
+    debug!("Verify agg sig");
     if !verify_multi(&agg_sig, &resp.new_envelope, &agg_pk) {
-        println!("Invalid signature");
+        debug!("Invalid signature");
         return Ok(());
     }
 
     // Get logs
-    println!("Get logs");
+    debug!("Get logs");
     let logs: Vec<LogEvent> = client
         .get(format!("http://localhost:9001/api/device/{}/logs", urlencoding::encode(&bls_pk_str)))
         .send()?
         .error_for_status()?
         .json()?;
-    println!("Logs: {:?}", logs);
+    debug!("Logs: {:?}", logs);
 
     // Decrypt log message
-    println!("Decrypt log message");
+    debug!("Decrypt log message");
     let event = &logs[0];
     let dec_req: TestRequest = event.envelope.open(&enc_key)?;
 
-    println!("Decrypted message: {:?}", dec_req);
+    debug!("Decrypted message: {:?}", dec_req);
 
     let state = AuditClientState {
         bls_sk: bls_sk.as_bytes(),
         enc_key: enc_key.into(),
     };
-    println!("\nState: {}", serde_json::to_string_pretty(&state)?);
+    debug!("\nState: {}", serde_json::to_string_pretty(&state)?);
 
     Ok(())
 }

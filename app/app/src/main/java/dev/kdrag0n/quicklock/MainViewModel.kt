@@ -38,4 +38,10 @@ class MainViewModel @Inject constructor(
             unlockFlow.emit()
         }
     }
+
+    fun updateEntities() {
+        viewModelScope.launch {
+            client.updateEntities()
+        }
+    }
 }

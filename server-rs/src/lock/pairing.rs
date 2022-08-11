@@ -8,6 +8,7 @@ use axum::routing::{get, post};
 use dashmap::DashMap;
 use lazy_static::lazy_static;
 use parking_lot::Mutex;
+use tracing::log::{debug, info};
 use crate::envelope::SignedRequestEnvelope;
 use crate::lock::model::{PairFinishPayload, PairingChallenge, InitialPairQr, InitialPairFinishRequest, Delegation};
 use qrcode::QrCode;
@@ -102,7 +103,7 @@ async fn start_initial() -> AppResult<impl IntoResponse> {
 
     // Generate secret
     let secret = generate_secret();
-    println!("secret = {}", secret);
+    debug!("secret = {}", secret);
     INITIAL_PAIRING_SECRET.lock().replace(secret.clone());
 
     // Print QR code
@@ -111,13 +112,13 @@ async fn start_initial() -> AppResult<impl IntoResponse> {
     })?;
     let qr = QrCode::new(qr_data)?;
     let image = qr.render::<Dense1x2>().build();
-    println!("{}", image);
+    info!("{}", image);
 
     Ok(Json(()))
 }
 
 async fn finish_initial(req: Json<InitialPairFinishRequest>) -> AppResult<impl IntoResponse> {
-    println!("Finish initial pair: {:?}", req);
+    debug!("Finish initial pair: {:?}", req);
 
     // Verify HMAC
     let secret = INITIAL_PAIRING_SECRET.lock().take().unwrap();
@@ -150,7 +151,7 @@ async fn post_finish_payload(
     require(!FINISH_PAYLOADS.contains_key(&id))?;
 
     // Raw string for flexibility
-    println!("Delegated pair finish payload: {:?}", payload);
+    debug!("Delegated pair finish payload: {:?}", payload);
     FINISH_PAYLOADS.insert(id, payload);
     Ok(Json(()))
 }
@@ -161,7 +162,7 @@ async fn finish_delegated(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
 ) -> AppResult<impl IntoResponse> {
     let req: Delegation = envelope.open_for_delegation(&addr)?;
-    println!("Finish delegated pair: {:?}", req);
+    debug!("Finish delegated pair: {:?}", req);
 
     // Prevent delegator from changing request
     {

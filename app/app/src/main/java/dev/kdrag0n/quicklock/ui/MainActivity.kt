@@ -11,17 +11,21 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import dagger.hilt.android.AndroidEntryPoint
 import dev.kdrag0n.quicklock.MainViewModel
+import dev.kdrag0n.quicklock.NativeLib
 import dev.kdrag0n.quicklock.ui.theme.AppTheme
 import dev.kdrag0n.quicklock.util.collectAsLifecycleState
 import dev.kdrag0n.quicklock.util.launchCollect
 import dev.kdrag0n.quicklock.util.launchStarted
 import dev.kdrag0n.quicklock.util.setAppContent
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 @AndroidEntryPoint
 class MainActivity : AppCompatActivity() {
@@ -43,6 +47,11 @@ class MainActivity : AppCompatActivity() {
             }
         }
     }
+
+    override fun onResume() {
+        super.onResume()
+        model.updateEntities()
+    }
 }
 
 @SuppressLint("UnsafeOptInUsageError")
@@ -50,6 +59,8 @@ class MainActivity : AppCompatActivity() {
 private fun MainScreen(
     model: MainViewModel,
 ) {
+    val scope = rememberCoroutineScope()
+
     Box(
         modifier = Modifier.fillMaxSize(),
         contentAlignment = Alignment.Center,
@@ -92,6 +103,20 @@ private fun MainScreen(
                 },
             ) {
                 Text("Write tag")
+            }
+
+            Divider()
+
+            TextButton(
+                onClick = {
+                    scope.launch {
+                        NativeLib.startServer()
+                        delay(500)
+                        model.updateEntities()
+                    }
+                },
+            ) {
+                Text("Start server")
             }
         }
     }

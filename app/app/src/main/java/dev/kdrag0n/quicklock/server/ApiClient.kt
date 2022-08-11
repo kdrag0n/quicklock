@@ -53,8 +53,14 @@ class ApiClient @Inject constructor(
 
     init {
         GlobalScope.launch {
-            entities.value = getEntities()
+            updateEntities()
         }
+    }
+
+    suspend fun updateEntities() {
+        try {
+            entities.value = getEntities()
+        } catch (e: Exception) { }
     }
 
     private suspend fun getEntities() = service.getEntities().unwrap()
