@@ -86,7 +86,7 @@ pub extern "system" fn Java_dev_kdrag0n_quicklock_NativeLib_envelopeSeal(
 pub extern "system" fn JNI_OnLoad(_: JavaVM, _: *const c_void) -> jint {
     android_logger::init_once(
         Config::default()
-            .with_min_level(Level::Trace)
+            .with_min_level(Level::Debug)
             .with_tag("RustLib"),
     );
     log_panics::init();

@@ -5,6 +5,7 @@ import dev.kdrag0n.quicklock.CryptoService
 import dev.kdrag0n.quicklock.NativeLib
 import dev.kdrag0n.quicklock.toBase64
 import dev.kdrag0n.quicklock.util.EventFlow
+import dev.kdrag0n.quicklock.util.profileLog
 import dev.kdrag0n.quicklock.util.toBase1024
 import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.GlobalScope
@@ -182,9 +183,20 @@ class ApiClient @Inject constructor(
     }
 
     suspend fun unlock(entityId: String) {
-        val challenge = service.startUnlock(UnlockStartRequest(entityId)).unwrap()
-        require(challenge.entityId == entityId)
-        service.finishUnlock(challenge.id, sealAndSign(challenge))
+        profileLog("unlock") {
+            val challenge = profileLog("start") {
+                service.startUnlock(UnlockStartRequest(entityId)).unwrap()
+            }
+
+            require(challenge.entityId == entityId)
+
+            val envelope = profileLog("sealAndSign") {
+                sealAndSign(challenge)
+            }
+            profileLog("finish") {
+                service.finishUnlock(challenge.id, envelope)
+            }
+        }
     }
 
     private suspend inline fun <reified T> sealAndSign(
@@ -193,15 +205,25 @@ class ApiClient @Inject constructor(
     ): SignedRequestEnvelope<T> {
         // Seal unsigned envelope
         val requestData = moshi.adapter(T::class.java).toJson(request)
-        val envelopeJson = NativeLib.envelopeSeal(crypto.encKeyBytes, requestData)
+        val envelopeJson = profileLog("nativeSeal") {
+            NativeLib.envelopeSeal(crypto.encKeyBytes, requestData)
+        }
         val envelopeData = envelopeJson.encodeToByteArray()
         val envelope = envelopeAdapter.fromJson(envelopeJson)!!
 
-        val (newEnvelopeData, serverSig) = auditor.sign(SignRequest(
-            clientPk = crypto.blsPublicKeyEncoded,
-            envelope = envelopeData,
-            clientSig = crypto.signBls(envelopeData),
-        )).unwrap()
+        val clientSig1 = profileLog("signBls1") {
+            crypto.signBls(envelopeData)
+        }
+        val clientPk = profileLog("blsClientPk") {
+            crypto.blsPublicKeyEncoded
+        }
+        val (newEnvelopeData, serverSig) = profileLog("auditSign") {
+            auditor.sign(SignRequest(
+                clientPk = clientPk,
+                envelope = envelopeData,
+                clientSig = clientSig1,
+            )).unwrap()
+        }
 
         // Verify new envelope
         val newEnvelope = envelopeAdapter.fromJson(newEnvelopeData.decodeToString())!!
@@ -209,14 +231,18 @@ class ApiClient @Inject constructor(
         require(newEnvelope.encNonce contentEquals envelope.encNonce)
 
         // Sign and aggregate BLS
-        val clientBlsSig = crypto.signBls(newEnvelopeData)
+        val clientBlsSig = profileLog("signBls2") {
+            crypto.signBls(newEnvelopeData)
+        }
         val blsSig = crypto.aggregateBls(clientBlsSig, serverSig)
 
         // Sign EC
-        val ecSig = crypto.finishSignature(
-            sig = signer ?: crypto.prepareSignature(),
-            payload = newEnvelopeData,
-        )
+        val ecSig = profileLog("signEc") {
+            crypto.finishSignature(
+                sig = signer ?: crypto.prepareSignature(),
+                payload = newEnvelopeData,
+            )
+        }
 
         return SignedRequestEnvelope(
             deviceId = crypto.publicKeyEncoded,

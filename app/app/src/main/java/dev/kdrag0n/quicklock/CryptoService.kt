@@ -4,6 +4,7 @@ import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
 import dagger.Reusable
+import dev.kdrag0n.quicklock.util.profileLog
 import okio.ByteString.Companion.decodeBase64
 import java.security.KeyPairGenerator
 import java.security.KeyStore
@@ -32,11 +33,12 @@ class CryptoService @Inject constructor(
     val delegationKeyEncoded
         get() = getKeyEntry(alias = DELEGATION_ALIAS).certificate.publicKey.encoded.toBase64()
 
-    val blsPublicKeyBytes: ByteArray
-        get() {
-            val sk = settings.blsPrivateKey!!.decodeBase64()!!.toByteArray()
-            return NativeLib.blsDerivePublicKey(sk)
+    val blsPublicKeyBytes by lazy {
+        val sk = settings.blsPrivateKey!!.decodeBase64()!!.toByteArray()
+        profileLog("blsDerivePk") {
+            NativeLib.blsDerivePublicKey(sk)
         }
+    }
 
     val blsPublicKeyEncoded
         get() = blsPublicKeyBytes.toBase64()
@@ -67,7 +69,10 @@ class CryptoService @Inject constructor(
 
     fun aggregateBls(clientSig: ByteArray, serverSig: ByteArray): ByteArray {
         val serverPk = settings.blsServerPublicKey!!.decodeBase64()!!.toByteArray()
-        return NativeLib.blsAggregateSigs(blsPublicKeyBytes, clientSig, serverPk, serverSig)
+        val clientPk = blsPublicKeyBytes
+        return profileLog("blsAggregate") {
+            NativeLib.blsAggregateSigs(clientPk, clientSig, serverPk, serverSig)
+        }
     }
 
     fun generateKey(challengeId: String, isDelegation: Boolean = false): PublicKey {
@@ -93,7 +98,7 @@ class CryptoService @Inject constructor(
             }
 
             setDigests(KeyProperties.DIGEST_SHA256)
-            setIsStrongBoxBacked(true)
+//            setIsStrongBoxBacked(true)
             build()
         }
 
