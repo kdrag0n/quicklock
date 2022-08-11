@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::fs::File;
 use std::io::BufReader;
 use once_cell::sync::Lazy;
-use qlock::lock::model::Entity;
+use crate::lock::model::Entity;
 use serde::{Serialize, Deserialize};
 
 fn time_grace_period() -> u64 { 5 * 60 * 1000 } // 5 min

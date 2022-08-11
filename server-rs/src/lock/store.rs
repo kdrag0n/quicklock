@@ -1,4 +1,4 @@
-use qlock::serialize::base64 as serde_b64;
+use crate::serialize::base64 as serde_b64;
 
 use std::fs::File;
 use std::io;
@@ -6,7 +6,7 @@ use std::io::BufReader;
 use dashmap::DashMap;
 use once_cell::sync::Lazy;
 use serde::{Serialize, Deserialize};
-use qlock::time::now;
+use crate::time::now;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PairedDevice {

@@ -1,10 +1,11 @@
 use std::net::SocketAddr;
 
 use anyhow::anyhow;
-use qlock::{error::AppResult, envelope::SignedRequestEnvelope, checks::{require, require_eq}, time::now};
+use crate::{error::AppResult, envelope::SignedRequestEnvelope, checks::{require, require_eq}, time::now};
 use serde::de::DeserializeOwned;
-
-use crate::{crypto::{verify_ec_signature_str, verify_bls_signature_str}, store::STORE, config::CONFIG};
+use crate::lock::config::CONFIG;
+use crate::lock::crypto::{verify_bls_signature_str, verify_ec_signature_str};
+use super::store::STORE;
 
 pub trait EnvelopeOpen {
     fn open<T: DeserializeOwned>(&self, addr: &SocketAddr) -> AppResult<T>;

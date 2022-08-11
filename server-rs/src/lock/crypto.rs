@@ -3,9 +3,9 @@ use bls_signatures::{PublicKey, Serialize, Signature};
 use ring::signature;
 use ring::signature::UnparsedPublicKey;
 use spki::SubjectPublicKeyInfo;
-use qlock::bls::verify_multi;
-use qlock::checks::require;
-use qlock::error::AppResult;
+use crate::bls::verify_multi;
+use crate::checks::require;
+use crate::error::AppResult;
 
 pub fn verify_ec_signature_str(data: &str, public_key: &str, signature: &str) -> AppResult<()> {
     let pk = base64::decode(public_key)?;

@@ -5,7 +5,6 @@ use num_bigint::BigUint;
 use pairing::{MultiMillerLoop, MillerLoopResult};
 use bls_signatures::{PrivateKey, PublicKey, Serialize, Signature};
 use pairing::group::{Curve, Group};
-use pairing::group::ff::Field;
 use pairing::group::prime::PrimeCurveAffine;
 use sha2::Digest;
 

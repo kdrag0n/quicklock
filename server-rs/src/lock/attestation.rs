@@ -3,10 +3,10 @@ use anyhow::anyhow;
 use x509_parser::der_parser::oid;
 use x509_parser::prelude::{FromDer, X509Certificate};
 use asn1::{Asn1Read, Asn1Write, Enumerated, SetOf};
-use qlock::checks::require;
-use qlock::time::now;
-use crate::certificates::GOOGLE_ROOTS;
-use crate::CONFIG;
+use crate::checks::require;
+use crate::time::now;
+use super::certificates::GOOGLE_ROOTS;
+use super::CONFIG;
 
 /*
  * KeyMint v100 schema

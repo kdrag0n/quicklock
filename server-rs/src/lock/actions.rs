@@ -1,7 +1,7 @@
 use lazy_static::lazy_static;
-use qlock::envelope::SignedRequestEnvelope;
-use qlock::error::AppResult;
-use qlock::lock::model::{UnlockChallenge, UnlockStartRequest};
+use crate::envelope::SignedRequestEnvelope;
+use crate::error::AppResult;
+use crate::lock::model::{UnlockChallenge, UnlockStartRequest};
 use std::net::SocketAddr;
 use std::time::Duration;
 use anyhow::anyhow;
@@ -12,12 +12,13 @@ use axum::routing::post;
 use dashmap::DashMap;
 use tracing::{error, info};
 use tokio::time::sleep;
-use qlock::checks::require;
-use qlock::time::now;
-use crate::request::EnvelopeOpen;
-use crate::{CONFIG, homeassistant};
-use crate::crypto::generate_secret;
-use crate::store::STORE;
+use crate::checks::require;
+use super::config::CONFIG;
+use super::homeassistant;
+use crate::time::now;
+use super::request::EnvelopeOpen;
+use super::crypto::generate_secret;
+use super::store::STORE;
 
 lazy_static! {
     static ref UNLOCK_CHALLENGES: DashMap<String, UnlockChallenge> = DashMap::new();

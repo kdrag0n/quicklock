@@ -1,6 +1,6 @@
 use anyhow::anyhow;
-use qlock::error::AppResult;
-use crate::CONFIG;
+use crate::error::AppResult;
+use super::CONFIG;
 use std::str;
 use reqwest::Client;
 
