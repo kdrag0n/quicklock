@@ -1,8 +1,13 @@
-use bls12_381::{Bls12, G1Affine, G1Projective, G2Projective, Gt, hash_to_curve::HashToCurve, Scalar};
-use bls12_381::hash_to_curve::{ExpandMsgXmd, HashToField};
-use pairing::{MultiMillerLoop};
+use std::str::FromStr;
+
+use blstrs::{Bls12, G1Affine, G1Projective, G2Projective, Gt, Scalar};
+use num_bigint::BigUint;
+use pairing::{MultiMillerLoop, MillerLoopResult};
 use bls_signatures::{PrivateKey, PublicKey, Serialize, Signature};
-use pairing::group::Curve;
+use pairing::group::{Curve, Group};
+use pairing::group::ff::Field;
+use pairing::group::prime::PrimeCurveAffine;
+use sha2::Digest;
 
 // No official cipher suite ID for multi-sig, so use NUL (basic scheme) because that's what the
 // client-signed messages are: plain sig with a single message.
@@ -11,13 +16,15 @@ const CIPHER_SUITE_ID: &[u8] = b"BLS_SIG_BLS12381G2_XMD:SHA-256_SSWU_RO_NUL_";
 const FIELD_DST: &[u8] = b"BLS_SIG_BLS12381G2_XMD:SHA-256_SSWU_RO_MUL_";
 
 fn hash_to_curve(msg: &[u8]) -> G2Projective {
-    <G2Projective as HashToCurve<ExpandMsgXmd<sha2::Sha256>>>::hash_to_curve(msg, CIPHER_SUITE_ID)
+    G2Projective::hash_to_curve(msg, CIPHER_SUITE_ID, &[])
 }
 
+// TODO: expand hash to reduce modulo bias
 fn hash_to_field(msg: &[u8]) -> Scalar {
-    let mut out = [Scalar::zero()];
-    Scalar::hash_to_field::<ExpandMsgXmd<sha2::Sha256>>(msg, FIELD_DST, &mut out);
-    out[0]
+    let hash_bytes = sha2::Sha256::digest(msg);
+    let mut bigint = BigUint::from_bytes_le(&hash_bytes);
+    bigint %= BigUint::from_str("52435875175126190479447740508185965837690552500527637822603658699938581184513").unwrap();
+    Scalar::from_bytes_le(&bigint.to_bytes_le().try_into().unwrap()).unwrap()
 }
 
 pub fn sign_aug(sk: &PrivateKey, msg: &[u8]) -> Signature {

@@ -10,12 +10,14 @@ anyhow = "1.0.58"
 asn1 = "0.10.0"
 axum = { version = "0.5.13" }
 base64 = "0.13.0"
-bls-signatures = "0.12.0"
+bls-signatures = { version = "0.12.0", features = ["blst", "multicore"], default-features = false }
 bls12_381 = { version = "0.7.0", features = ["experimental"] }
+blstrs = "0.5.0"
 chacha20poly1305 = "0.10.0"
 dashmap = { version = "5.3.4", features = ["serde"] }
 hyper = "0.14.20"
 lazy_static = "1.4.0"
+num-bigint = "0.4.3"
 once_cell = "1.13.0"
 pairing = "0.22.0"
 parking_lot = "0.12.1"
@@ -25,7 +27,7 @@ reqwest = { version = "0.11.11", features = ["json", "blocking", "rustls-tls"], 
 ring = "0.16.20"
 serde = { version = "1.0.140", features = ["derive"] }
 serde_json = "1.0.82"
-sha2 = "0.9.9"
+sha2 = { version = "0.9.9", features = ["asm", "asm-aarch64"] }
 spki = "0.6.0"
 thiserror = "1.0.31"
 tokio = { version = "1.20.1", features = ["full"] }
