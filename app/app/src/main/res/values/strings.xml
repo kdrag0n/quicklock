@@ -1,3 +1,5 @@
 <resources>
     <string name="app_name">QuickLock</string>
+    <string name="servicedesc">Lock server</string>
+    <string name="aiddescription">Lock server AID</string>
 </resources>

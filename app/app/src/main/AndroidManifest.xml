@@ -59,6 +59,18 @@
             android:name=".ui.ConfirmDelegationActivity"
             android:exported="false" />
 
+        <service
+            android:name=".ServerHostApduService"
+            android:exported="true"
+            android:permission="android.permission.BIND_NFC_SERVICE">
+            <intent-filter>
+                <action android:name="android.nfc.cardemulation.action.HOST_APDU_SERVICE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.nfc.cardemulation.host_apdu_service"
+                android:resource="@xml/apduservice" />
+        </service>
+
     </application>
 
 </manifest>
