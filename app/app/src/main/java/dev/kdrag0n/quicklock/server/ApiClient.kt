@@ -15,6 +15,7 @@ import okio.ByteString
 import okio.ByteString.Companion.decodeBase64
 import okio.ByteString.Companion.toByteString
 import retrofit2.Response
+import timber.log.Timber
 import java.io.IOException
 import java.security.Signature
 import javax.inject.Inject
@@ -34,7 +35,7 @@ data class DelegationState(
 @OptIn(DelicateCoroutinesApi::class)
 @Singleton
 class ApiClient @Inject constructor(
-    private val service: ApiService,
+    private val service: NfcApiServiceWrapper,
     private val auditor: AuditService,
     private val crypto: CryptoService,
     private val moshi: Moshi,
@@ -60,7 +61,10 @@ class ApiClient @Inject constructor(
     suspend fun updateEntities() {
         try {
             entities.value = getEntities()
-        } catch (e: Exception) { }
+            Timber.d("New value = ${entities.value}")
+        } catch (e: Exception) {
+            Timber.e(e, "Entities update failed")
+        }
     }
 
     private suspend fun getEntities() = service.getEntities().unwrap()

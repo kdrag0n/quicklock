@@ -16,6 +16,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.lifecycleScope
 import dagger.hilt.android.AndroidEntryPoint
 import dev.kdrag0n.quicklock.MainViewModel
 import dev.kdrag0n.quicklock.NativeLib
@@ -46,6 +47,8 @@ class MainActivity : AppCompatActivity() {
                 startActivity(Intent(this@MainActivity, QrDisplayActivity::class.java))
             }
         }
+
+        NativeLib.startServer()
     }
 
     override fun onResume() {
@@ -103,6 +106,14 @@ private fun MainScreen(
                 },
             ) {
                 Text("Write tag")
+            }
+
+            TextButton(
+                onClick = {
+                    context.startActivity(Intent(context, NfcInteractiveActivity::class.java))
+                },
+            ) {
+                Text("Interactive")
             }
 
             Divider()

@@ -11,6 +11,10 @@ class CustomApplication : Application() {
         super.onCreate()
 
         DynamicColors.applyToActivitiesIfAvailable(this)
-        Timber.plant(Timber.DebugTree())
+        Timber.plant(object : Timber.DebugTree() {
+            override fun createStackElementTag(element: StackTraceElement): String? {
+                return "Qlock"
+            }
+        })
     }
 }

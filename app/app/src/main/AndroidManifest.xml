@@ -48,6 +48,10 @@
             android:exported="false" />
 
         <activity
+            android:name=".ui.NfcInteractiveActivity"
+            android:exported="false" />
+
+        <activity
             android:name=".ui.QrScanActivity"
             android:exported="false" />
 
