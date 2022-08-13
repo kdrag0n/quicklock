@@ -5,6 +5,7 @@ import com.squareup.moshi.JsonClass
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.adapter
 import dev.kdrag0n.quicklock.ui.apduExt
+import dev.kdrag0n.quicklock.util.profileLog
 import okio.ByteString.Companion.toByteString
 import retrofit2.Response
 import timber.log.Timber
@@ -63,7 +64,9 @@ class NfcApiService(
 
         val apdu = apduExt(1, 1, endpoint.toByte(), 0, gzipData)
         Timber.d("req: payload=${reqData.size} apdu=${apdu.size}")
-        val respData = tag.transceive(apdu)
+        val respData = profileLog("nfcTransceive") {
+            tag.transceive(apdu)
+        }
         if (respData[0] != '{'.code.toByte() && respData[0] != '['.code.toByte()) {
             error("Invalid resp data: ${respData.toByteString().hex()}")
         }
@@ -98,18 +101,18 @@ data class NfcRequest(
 
 private object NoPayload
 
-fun gzipBytes(data: ByteArray): ByteArray {
+fun gzipBytes(data: ByteArray): ByteArray = profileLog("gzip") {
     val bos = ByteArrayOutputStream()
     GZIPOutputStream(bos).use {
         it.write(data)
     }
-    return bos.toByteArray()
+    bos.toByteArray()
 }
 
-fun gunzipBytes(data: ByteArray): ByteArray {
+fun gunzipBytes(data: ByteArray): ByteArray = profileLog("gunzip") {
     val bos = ByteArrayOutputStream()
     GZIPInputStream(data.inputStream()).use {
         it.copyTo(bos)
     }
-    return bos.toByteArray()
+    bos.toByteArray()
 }

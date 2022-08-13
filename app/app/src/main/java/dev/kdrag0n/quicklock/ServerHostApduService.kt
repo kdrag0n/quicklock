@@ -8,6 +8,7 @@ import dagger.hilt.android.AndroidEntryPoint
 import dev.kdrag0n.quicklock.server.ApiService
 import dev.kdrag0n.quicklock.server.NfcRequest
 import dev.kdrag0n.quicklock.server.gunzipBytes
+import dev.kdrag0n.quicklock.util.profileLog
 import kotlinx.coroutines.runBlocking
 import okio.ByteString.Companion.toByteString
 import retrofit2.Response
@@ -51,17 +52,19 @@ class ServerHostApduService : HostApduService() {
             val req: NfcRequest = parseReq(payloadStr)
             Timber.d("Custom protocol: HTTP proxy $req")
             val resp = runBlocking {
-                when (p1.toInt()) {
-                    1 -> encodeResp(service.getEntities())
-                    2 -> encodeResp(service.startInitialPair())
-                    3 -> encodeResp(service.finishInitialPair(parseReq(req.payload!!)))
-                    4 -> encodeResp(service.getDelegatedPairFinishPayload(req.challengeId!!))
-                    5 -> encodeResp(service.uploadDelegatedPairFinishPayload(req.challengeId!!, parseReq(req.payload!!)))
-                    6 -> encodeResp(service.finishDelegatedPair(req.challengeId!!, parseReq(req.payload!!)))
-                    7 -> encodeResp(service.getPairingChallenge())
-                    8 -> encodeResp(service.startUnlock(parseReq(req.payload!!)))
-                    9 -> encodeResp(service.finishUnlock(req.challengeId!!, parseReq(req.payload!!)))
-                    else -> null
+                profileLog("nfcProxyReq") {
+                    when (p1.toInt()) {
+                        1 -> encodeResp(service.getEntities())
+                        2 -> encodeResp(service.startInitialPair())
+                        3 -> encodeResp(service.finishInitialPair(parseReq(req.payload!!)))
+                        4 -> encodeResp(service.getDelegatedPairFinishPayload(req.challengeId!!))
+                        5 -> encodeResp(service.uploadDelegatedPairFinishPayload(req.challengeId!!, parseReq(req.payload!!)))
+                        6 -> encodeResp(service.finishDelegatedPair(req.challengeId!!, parseReq(req.payload!!)))
+                        7 -> encodeResp(service.getPairingChallenge())
+                        8 -> encodeResp(service.startUnlock(parseReq(req.payload!!)))
+                        9 -> encodeResp(service.finishUnlock(req.challengeId!!, parseReq(req.payload!!)))
+                        else -> null
+                    }
                 }
             }
 
