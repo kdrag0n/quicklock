@@ -35,7 +35,7 @@ data class DelegationState(
 @OptIn(DelicateCoroutinesApi::class)
 @Singleton
 class ApiClient @Inject constructor(
-    private val service: NfcApiServiceWrapper,
+    private val service: ApiService,
     private val auditor: AuditService,
     private val crypto: CryptoService,
     private val moshi: Moshi,

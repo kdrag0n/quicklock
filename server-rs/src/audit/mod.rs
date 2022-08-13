@@ -1,5 +1,6 @@
 use crate::envelope::{RequestEnvelope, RequestPublicMetadata};
 use crate::error::AppResult;
+use crate::profile;
 use crate::serialize::base64 as serde_b64;
 use crate::time::now;
 
@@ -90,7 +91,10 @@ async fn sign(
     let client_pk_data = base64::decode(&device.client_pk)?;
     let client_pk = PublicKey::from_bytes(&client_pk_data)?;
     let client_sig = Signature::from_bytes(&req.client_sig)?;
-    if !client_pk.verify(client_sig, &req.envelope) {
+    let valid = profile!("audit verify", {
+        !client_pk.verify(client_sig, &req.envelope)
+    });
+    if valid {
         return Err(anyhow!("Client signature invalid").into());
     }
 
@@ -106,15 +110,19 @@ async fn sign(
     };
 
     // Log request
+    profile!("audit store", {
     STORE.log_event(&device.client_pk, LogEvent {
         id: Ulid::new().into(),
         envelope: envelope.clone(),
+        });
     });
 
     // Sign payload
     let new_envelope = envelope.serialize();
     let sk = PrivateKey::from_bytes(&device.server_sk)?;
-    let sig = sk.sign(new_envelope.as_bytes());
+    let sig = profile!("audit sign", {
+        sk.sign(new_envelope.as_bytes())
+    });
 
     // Aggregate signature
     /*

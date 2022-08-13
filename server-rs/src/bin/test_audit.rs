@@ -6,7 +6,7 @@ use qlock::audit::store::LogEvent;
 use qlock::bls::verify_multi;
 use qlock::error::AppResult;
 use serde::{Deserialize, Serialize};
-use tracing::log::info;
+use tracing::log::{info, debug};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct TestRequest {
