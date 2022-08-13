@@ -26,11 +26,9 @@ pub struct PairedDevice {
     pub allowed_entities: Option<Vec<String>>,
 
     // Custom protocol
-    // BLS keys
-    pub bls_public_key: Option<String>,
-
-    // WebAuthn Authenticator object
-    pub serialized_authenticator: Option<String>,
+    // Audit server's Ed25519 key
+    #[serde(with = "serde_b64")]
+    pub audit_public_key: Vec<u8>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

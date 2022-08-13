@@ -49,7 +49,8 @@ pub struct PairFinishPayload {
     pub delegation_key: String,
     #[serde(with = "serde_b64")]
     pub enc_key: Vec<u8>,
-    pub bls_public_key: Option<String>,
+    #[serde(with = "serde_b64")]
+    pub audit_public_key: Vec<u8>,
     pub main_attestation_chain: Vec<String>,
     pub delegation_attestation_chain: Vec<String>,
 }

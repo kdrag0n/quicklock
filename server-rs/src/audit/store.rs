@@ -11,9 +11,13 @@ use super::RequestEnvelope;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PairedDevice {
-    pub client_pk: String,
+    pub client_id: String,
+    // For auth
     #[serde(with = "serde_b64")]
-    pub server_sk: Vec<u8>,
+    pub client_mac_key: Vec<u8>,
+    // For signing request
+    #[serde(with = "serde_b64")]
+    pub server_keypair: Vec<u8>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -39,12 +43,12 @@ impl DataStore {
     }
 
     pub fn add_device(&self, device: PairedDevice) {
-        self.devices.insert(device.client_pk.clone(), device);
+        self.devices.insert(device.client_id.clone(), device);
         self.persist();
     }
 
-    pub fn get_device(&self, public_key: &String) -> Option<PairedDevice> {
-        Some(self.devices.get(public_key)?.clone())
+    pub fn get_device(&self, id: &String) -> Option<PairedDevice> {
+        Some(self.devices.get(id)?.clone())
     }
 
     pub fn log_event(&self, device_id: &str, event: LogEvent) {

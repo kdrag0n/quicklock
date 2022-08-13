@@ -8,7 +8,9 @@ use std::str;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct RequestPublicMetadata {
+pub struct AuditStamp {
+    #[serde(with = "serde_b64")]
+    pub envelope_hash: Vec<u8>,
     pub client_ip: String,
     pub timestamp: u64,
 }
@@ -21,8 +23,6 @@ pub struct RequestEnvelope {
     pub enc_payload: Vec<u8>,
     #[serde(with = "serde_b64")]
     pub enc_nonce: Vec<u8>, // 192 bits
-    // Added by audit server
-    pub public_metadata: Option<RequestPublicMetadata>,
 }
 
 impl RequestEnvelope {
@@ -37,8 +37,6 @@ impl RequestEnvelope {
         Ok(RequestEnvelope {
             enc_payload,
             enc_nonce: nonce_bytes.into(),
-            // Filled by audit server
-            public_metadata: None,
         })
     }
 
@@ -76,6 +74,9 @@ impl RequestEnvelope {
 pub struct SignedRequestEnvelope {
     pub device_id: String,
     pub envelope: RequestEnvelope,
-    pub bls_signature: String,
-    pub ec_signature: String,
+    #[serde(with = "serde_b64")]
+    pub client_signature: Vec<u8>,
+    pub audit_stamp: AuditStamp,
+    #[serde(with = "serde_b64")]
+    pub audit_signature: Vec<u8>,
 }

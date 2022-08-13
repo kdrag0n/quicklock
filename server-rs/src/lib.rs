@@ -6,6 +6,7 @@ pub mod lock;
 pub mod audit;
 pub mod bls;
 pub mod envelope;
+pub mod crypto;
 
 pub mod time {
     use std::time::{SystemTime, UNIX_EPOCH};

@@ -1,13 +1,11 @@
-use crate::envelope::{RequestEnvelope, RequestPublicMetadata};
+use crate::envelope::{RequestEnvelope, AuditStamp};
 use crate::error::AppResult;
-use crate::profile;
+use crate::{crypto, profile};
 use crate::serialize::base64 as serde_b64;
 use crate::time::now;
 
 use std::net::SocketAddr;
 use anyhow::anyhow;
-use bls_signatures::{PrivateKey, PublicKey, Serialize as BlsSerialize, Signature};
-use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
 use base64;
 use tracing::log::debug;
@@ -17,8 +15,11 @@ use axum::{Json, Router};
 use axum::extract::{Path, ConnectInfo};
 use axum::response::IntoResponse;
 use axum::routing::{get, post};
+use ring::hmac;
+use ring::hmac::HMAC_SHA256;
+use ring::rand::SystemRandom;
+use ring::signature::{Ed25519KeyPair, KeyPair};
 use crate::audit::store::{LogEvent, PairedDevice, STORE};
-use crate::bls::{aggregate_pks_multi, aggregate_sigs_multi};
 
 pub mod store;
 pub mod client;
@@ -26,33 +27,33 @@ pub mod client;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RegisterRequest {
-    pub client_pk: String,
+    #[serde(with = "serde_b64")]
+    pub client_mac_key: Vec<u8>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RegisterResponse {
+    pub client_id: String,
     #[serde(with = "serde_b64")]
     pub server_pk: Vec<u8>,
-    #[serde(with = "serde_b64")]
-    pub aggregate_pk: Vec<u8>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SignRequest {
-    pub client_pk: String,
+    pub client_id: String,
     #[serde(with = "serde_b64")]
     pub envelope: Vec<u8>,
     #[serde(with = "serde_b64")]
-    pub client_sig: Vec<u8>,
+    pub client_mac: Vec<u8>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SignResponse {
     #[serde(with = "serde_b64")]
-    pub new_envelope: Vec<u8>, // with metadata injected
+    pub stamp: Vec<u8>, // with metadata injected
     #[serde(with = "serde_b64")]
     pub server_sig: Vec<u8>,
 }
@@ -60,21 +61,21 @@ pub struct SignResponse {
 async fn register(req: Json<RegisterRequest>) -> AppResult<impl IntoResponse> {
     debug!("Register: {:?}", req);
 
-    // Generate server private key for this device
-    let client_pk_data = base64::decode(&req.client_pk)?;
-    let client_pk = PublicKey::from_bytes(&client_pk_data)?;
-    let sk = PrivateKey::generate(&mut OsRng);
+    // Client ID = hash of MAC key
+    let client_id = base64::encode(crypto::hash(&req.client_mac_key));
+
+    // Generate server keypair for this device
+    let pkcs8 = Ed25519KeyPair::generate_pkcs8(&SystemRandom::new())?;
+    let keypair = Ed25519KeyPair::from_pkcs8(pkcs8.as_ref())?;
     STORE.add_device(PairedDevice {
-        client_pk: req.client_pk.clone(),
-        server_sk: sk.as_bytes(),
+        client_id: client_id.clone(),
+        client_mac_key: req.client_mac_key.clone(),
+        server_keypair: pkcs8.as_ref().into(),
     });
 
-    // Return aggregated public key
-    let server_pk = sk.public_key();
-    let agg_pk = aggregate_pks_multi(&[&client_pk, &server_pk]);
     Ok(Json(RegisterResponse {
-        server_pk: server_pk.as_bytes(),
-        aggregate_pk: agg_pk.as_bytes(),
+        client_id,
+        server_pk: keypair.public_key().as_ref().into(),
     }))
 }
 
@@ -84,59 +85,41 @@ async fn sign(
 ) -> AppResult<impl IntoResponse> {
     debug!("Sign: {:?}", req);
 
-    let device = STORE.get_device(&req.client_pk)
+    let device = STORE.get_device(&req.client_id)
         .ok_or_else(|| anyhow!("Unknown device"))?;
 
-    // Verify client signature to make sure this client is authorized
-    let client_pk_data = base64::decode(&device.client_pk)?;
-    let client_pk = PublicKey::from_bytes(&client_pk_data)?;
-    let client_sig = Signature::from_bytes(&req.client_sig)?;
-    let valid = profile!("audit verify", {
-        !client_pk.verify(client_sig, &req.envelope)
-    });
-    if valid {
-        return Err(anyhow!("Client signature invalid").into());
-    }
+    // Verify client MAC to make sure this client is authorized
+    let mac_key = hmac::Key::new(HMAC_SHA256, &device.client_mac_key);
+    hmac::verify(&mac_key, &req.envelope, &req.client_mac)?;
 
-    // Add metadata
-    let metadata = RequestPublicMetadata {
+    // Create metadata stamp
+    let stamp = AuditStamp {
+        envelope_hash: crypto::hash(&req.envelope).into(),
         client_ip: addr.ip().to_string(),
         timestamp: now(),
     };
-    let mut envelope: RequestEnvelope = serde_json::from_slice(&req.envelope)?;
-    envelope = RequestEnvelope {
-        public_metadata: Some(metadata),
-        ..envelope
-    };
+    let envelope: RequestEnvelope = serde_json::from_slice(&req.envelope)?;
 
     // Log request
     profile!("audit store", {
-    STORE.log_event(&device.client_pk, LogEvent {
-        id: Ulid::new().into(),
-        envelope: envelope.clone(),
+        STORE.log_event(&device.client_id, LogEvent {
+            id: Ulid::new().into(),
+            envelope: envelope.clone(),
         });
     });
 
-    // Sign payload
-    let new_envelope = envelope.serialize();
-    let sk = PrivateKey::from_bytes(&device.server_sk)?;
+    // Sign stamp
+    let stamp_data = serde_json::to_string(&stamp)?;
+    let keypair = Ed25519KeyPair::from_pkcs8(&device.server_keypair)?;
     let sig = profile!("audit sign", {
-        sk.sign(new_envelope.as_bytes())
+        keypair.sign(stamp_data.as_bytes())
     });
-
-    // Aggregate signature
-    /*
-    let agg_sig = aggregate_sigs_multi(&[
-        (&client_sig, &client_pk),
-        (&sig, &sk.public_key()),
-    ]);
-    */
 
     // Send our signature to the client for aggregation. Client needs to re-sign
     // with the new envelope that includes metadata.
     Ok(Json(SignResponse {
-        new_envelope: serde_json::to_vec(&envelope)?,
-        server_sig: sig.as_bytes(),
+        stamp: serde_json::to_vec(&stamp)?,
+        server_sig: sig.as_ref().into(),
     }))
 }
 

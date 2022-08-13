@@ -1,6 +1,5 @@
 use std::net::SocketAddr;
 
-use anyhow::anyhow;
 use axum::response::IntoResponse;
 use axum::{Json, Router};
 use axum::extract::{Path, ConnectInfo};
@@ -83,12 +82,11 @@ fn finish_pair(
         public_key: req.public_key.clone(),
         delegation_key: req.delegation_key.clone(),
         enc_key: req.enc_key.clone(),
-        bls_public_key: req.bls_public_key.clone(),
+        audit_public_key: req.audit_public_key.clone(),
         // Params
         expires_at,
         delegated_by,
         allowed_entities,
-        serialized_authenticator: None
     });
     Ok(())
 }
@@ -124,8 +122,7 @@ async fn finish_initial(req: Json<InitialPairFinishRequest>) -> AppResult<impl I
     let secret = INITIAL_PAIRING_SECRET.lock().take().unwrap();
     let key_bytes = base64::decode(&secret)?;
     let key = hmac::Key::new(hmac::HMAC_SHA256, &key_bytes);
-    hmac::verify(&key, req.finish_payload.as_bytes(), &base64::decode(&req.mac)?)
-        .map_err(|_| anyhow!("Invalid MAC"))?;
+    hmac::verify(&key, req.finish_payload.as_bytes(), &base64::decode(&req.mac)?)?;
 
     let payload: PairFinishPayload = serde_json::from_str(&req.finish_payload)?;
     finish_pair(&payload, None, u64::MAX, None)?;

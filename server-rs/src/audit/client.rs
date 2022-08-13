@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 #[serde(rename_all = "camelCase")]
 pub struct AuditClientState {
     #[serde(with = "serde_b64")]
-    pub bls_sk: Vec<u8>,
+    pub mac_key: Vec<u8>,
     #[serde(with = "serde_b64")]
     pub enc_key: Vec<u8>,
 }

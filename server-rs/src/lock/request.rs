@@ -1,10 +1,12 @@
 use std::net::SocketAddr;
 
 use anyhow::anyhow;
+use ring::constant_time::verify_slices_are_equal;
 use crate::{error::AppResult, envelope::SignedRequestEnvelope, checks::{require, require_eq}, time::now};
 use serde::de::DeserializeOwned;
+use crate::crypto::hash;
 use crate::lock::config::CONFIG;
-use crate::lock::crypto::{verify_bls_signature_str, verify_ec_signature_str};
+use crate::lock::crypto::{verify_ec_signature_str, verify_ed25519_signature};
 use super::store::STORE;
 
 pub trait EnvelopeOpen {
@@ -19,20 +21,22 @@ where
     let device = STORE.get_device(&env.device_id)
         .ok_or_else(|| anyhow!("Device not found"))?;
 
-    // Verify signature of envelope JSON string
+    // Verify client's ECDSA signature for envelope
     let envelope_str = serde_json::to_string(&env.envelope)?;
     let ec_pk = if is_delegation { &device.delegation_key } else { &device.public_key };
-    verify_ec_signature_str(&envelope_str, ec_pk, &env.ec_signature)?;
+    verify_ec_signature_str(&envelope_str, ec_pk, &env.client_signature)?;
 
-    if let Some(bls_pk) = device.bls_public_key {
-        verify_bls_signature_str(&envelope_str, &bls_pk, &env.bls_signature)?;
-    }
+    // Verify audit server's Ed25519 signature for stamp
+    let stamp = &env.audit_stamp;
+    let stamp_data = serde_json::to_vec(stamp)?;
+    verify_ed25519_signature(&stamp_data, &device.audit_public_key, &env.audit_signature)?;
+
+    // Verify stamp
+    verify_slices_are_equal(&stamp.envelope_hash, &hash(envelope_str.as_bytes()))?;
 
     // Verify public request metadata
-    let meta = env.envelope.public_metadata.as_ref()
-        .ok_or_else(|| anyhow!("Missing public metadata"))?;
-    require_eq(&meta.client_ip, &addr.ip().to_string())?;
-    require(now().abs_diff(meta.timestamp) <= CONFIG.time_grace_period)?;
+    require_eq(&stamp.client_ip, &addr.ip().to_string())?;
+    require(now().abs_diff(stamp.timestamp) <= CONFIG.time_grace_period)?;
 
     env.envelope.open(&device.enc_key)
 }
