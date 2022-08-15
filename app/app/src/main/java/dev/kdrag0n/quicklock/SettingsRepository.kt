@@ -10,7 +10,8 @@ import javax.inject.Inject
 class SettingsRepository @Inject constructor(
     @ApplicationContext context: Context,
 ) : KotprefModel(context) {
-    var blsPrivateKey by nullableStringPref()
-    var blsServerPublicKey by nullableStringPref()
+    var macKey by nullableStringPref()
     var encKey by nullableStringPref()
+    var auditServerPublicKey by nullableStringPref()
+    var auditClientId by nullableStringPref()
 }

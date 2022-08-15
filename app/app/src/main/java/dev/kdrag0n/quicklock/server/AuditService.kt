@@ -15,24 +15,24 @@ interface AuditService {
 
 @JsonClass(generateAdapter = true)
 data class RegisterRequest(
-    val clientPk: String,
+    val clientMacKey: ByteArray,
 )
 
 @JsonClass(generateAdapter = true)
 data class RegisterResponse(
+    val clientId: String,
     val serverPk: ByteArray,
-    val aggregatePk: String,
 )
 
 @JsonClass(generateAdapter = true)
 data class SignRequest(
-    val clientPk: String,
+    val clientId: String,
     val envelope: ByteArray,
-    val clientSig: ByteArray,
+    val clientMac: ByteArray,
 )
 
 @JsonClass(generateAdapter = true)
 data class SignResponse(
-    val newEnvelope: ByteArray,
+    val stamp: ByteArray,
     val serverSig: ByteArray,
 )

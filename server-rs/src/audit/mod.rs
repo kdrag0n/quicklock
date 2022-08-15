@@ -53,7 +53,7 @@ pub struct SignRequest {
 #[serde(rename_all = "camelCase")]
 pub struct SignResponse {
     #[serde(with = "serde_b64")]
-    pub stamp: Vec<u8>, // with metadata injected
+    pub stamp: Vec<u8>,
     #[serde(with = "serde_b64")]
     pub server_sig: Vec<u8>,
 }

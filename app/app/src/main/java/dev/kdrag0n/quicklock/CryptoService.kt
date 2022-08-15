@@ -12,6 +12,8 @@ import java.security.PublicKey
 import java.security.SecureRandom
 import java.security.Signature
 import java.util.*
+import javax.crypto.Mac
+import javax.crypto.spec.SecretKeySpec
 import javax.inject.Inject
 
 @Reusable
@@ -34,7 +36,7 @@ class CryptoService @Inject constructor(
         get() = getKeyEntry(alias = DELEGATION_ALIAS).certificate.publicKey.encoded.toBase64()
 
     val blsPublicKeyBytes by lazy {
-        val sk = settings.blsPrivateKey!!.decodeBase64()!!.toByteArray()
+        val sk = settings.macKey!!.decodeBase64()!!.toByteArray()
         profileLog("blsDerivePk") {
             NativeLib.blsDerivePublicKey(sk)
         }
@@ -46,29 +48,47 @@ class CryptoService @Inject constructor(
     val encKeyBytes
         get() = settings.encKey!!.decodeBase64()!!.toByteArray()
 
+    val macKeyBytes
+        get() = settings.macKey!!.decodeBase64()!!.toByteArray()
+
+    val auditServerPublicKeyBytes
+        get() = settings.auditServerPublicKey!!.decodeBase64()!!.toByteArray()
+
+    val auditClientId
+        get() = settings.auditClientId!!
+
     fun generateKeys() {
         // Encryption
         val encKey = ByteArray(32)
         SecureRandom.getInstanceStrong().nextBytes(encKey)
         settings.encKey = encKey.toBase64()
 
-        // BLS
-        val blsKey = NativeLib.blsGeneratePrivateKey()
-        settings.blsPrivateKey = blsKey.toBase64()
+        // MAC key
+        val macKey = ByteArray(32)
+        SecureRandom.getInstanceStrong().nextBytes(macKey)
+        settings.macKey = macKey.toBase64()
     }
 
     fun signBls(data: ByteArray): ByteArray {
-        val sk = settings.blsPrivateKey!!.decodeBase64()!!.toByteArray()
+        val sk = settings.macKey!!.decodeBase64()!!.toByteArray()
         val sig = NativeLib.blsSignMessage(sk, data)
         return sig
     }
 
-    fun saveServerKey(serverBlsPk: ByteArray) {
-        settings.blsServerPublicKey = serverBlsPk.toBase64()
+    fun signMac(data: ByteArray): ByteArray {
+        val mac = Mac.getInstance("HmacSHA256")
+        val key = SecretKeySpec(macKeyBytes, "HmacSHA256")
+        mac.init(key)
+        return mac.doFinal(data)
+    }
+
+    fun saveServerKey(clientId: String, serverPk: ByteArray) {
+        settings.auditClientId = clientId
+        settings.auditServerPublicKey = serverPk.toBase64()
     }
 
     fun aggregateBls(clientSig: ByteArray, serverSig: ByteArray): ByteArray {
-        val serverPk = settings.blsServerPublicKey!!.decodeBase64()!!.toByteArray()
+        val serverPk = settings.auditServerPublicKey!!.decodeBase64()!!.toByteArray()
         val clientPk = blsPublicKeyBytes
         return profileLog("blsAggregate") {
             NativeLib.blsAggregateSigs(clientPk, clientSig, serverPk, serverSig)

@@ -52,11 +52,11 @@ interface ApiService {
 data class RequestEnvelope(
     val encPayload: ByteArray,
     val encNonce: ByteArray,
-    val publicMetadata: RequestPublicMetadata?,
 )
 
 @JsonClass(generateAdapter = true)
-data class RequestPublicMetadata(
+data class AuditStamp(
+    val envelopeHash: ByteArray,
     val clientIp: String,
     val timestamp: Long,
 )
@@ -65,8 +65,9 @@ data class RequestPublicMetadata(
 data class SignedRequestEnvelope<T>(
     val deviceId: String,
     val envelope: RequestEnvelope,
-    val blsSignature: ByteArray,
-    val ecSignature: ByteArray,
+    val clientSignature: ByteArray,
+    val auditStamp: AuditStamp,
+    val auditSignature: ByteArray,
 )
 
 /*
@@ -95,7 +96,7 @@ data class PairFinishPayload(
     val publicKey: String,
     val delegationKey: String,
     val encKey: ByteArray,
-    val blsPublicKey: String?,
+    val auditPublicKey: ByteArray,
     val mainAttestationChain: List<String>,
     val delegationAttestationChain: List<String>,
 )

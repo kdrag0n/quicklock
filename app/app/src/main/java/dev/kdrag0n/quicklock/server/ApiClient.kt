@@ -44,6 +44,7 @@ class ApiClient @Inject constructor(
     private val delegatedQrAdapter = moshi.adapter(DelegatedPairQr::class.java)
     private val pairFinishAdapter = moshi.adapter(PairFinishPayload::class.java)
     private val envelopeAdapter = moshi.adapter(RequestEnvelope::class.java)
+    private val stampAdapter = moshi.adapter(AuditStamp::class.java)
 
     var currentPairState: PairState? = null
     var currentDelegationState: DelegationState? = null
@@ -99,17 +100,17 @@ class ApiClient @Inject constructor(
         val delegationKey = crypto.generateKey(challenge.id, isDelegation = true)
 
         crypto.generateKeys()
-        val (serverBlsPk, aggregateBlsPk) = auditor.register(RegisterRequest(
-            clientPk = crypto.blsPublicKeyEncoded,
+        val registerResp = auditor.register(RegisterRequest(
+            clientMacKey = crypto.macKeyBytes,
         )).unwrap()
-        crypto.saveServerKey(serverBlsPk)
+        crypto.saveServerKey(registerResp.clientId, registerResp.serverPk)
 
         val req = PairFinishPayload(
             challengeId = challenge.id,
             publicKey = mainKey.encoded.toBase64(),
             delegationKey = delegationKey.encoded.toBase64(),
             encKey = crypto.encKeyBytes,
-            blsPublicKey = aggregateBlsPk,
+            auditPublicKey = crypto.auditServerPublicKeyBytes,
             mainAttestationChain = crypto.getAttestationChain(),
             delegationAttestationChain = crypto.getAttestationChain(CryptoService.DELEGATION_ALIAS),
         )
@@ -221,44 +222,32 @@ class ApiClient @Inject constructor(
         val envelopeData = envelopeJson.encodeToByteArray()
         val envelope = envelopeAdapter.fromJson(envelopeJson)!!
 
-        val clientSig1 = profileLog("signBls1") {
-            crypto.signBls(envelopeData)
+        val clientSig1 = profileLog("signMac") {
+            crypto.signMac(envelopeData)
         }
-        val clientPk = profileLog("blsClientPk") {
-            crypto.blsPublicKeyEncoded
-        }
-        val (newEnvelopeData, serverSig) = profileLog("auditSign") {
+        val (stampData, auditSig) = profileLog("auditSign") {
             auditor.sign(SignRequest(
-                clientPk = clientPk,
+                clientId = crypto.auditClientId,
                 envelope = envelopeData,
-                clientSig = clientSig1,
+                clientMac = clientSig1,
             )).unwrap()
         }
-
-        // Verify new envelope
-        val newEnvelope = envelopeAdapter.fromJson(newEnvelopeData.decodeToString())!!
-        require(newEnvelope.encPayload contentEquals envelope.encPayload)
-        require(newEnvelope.encNonce contentEquals envelope.encNonce)
-
-        // Sign and aggregate BLS
-        val clientBlsSig = profileLog("signBls2") {
-            crypto.signBls(newEnvelopeData)
-        }
-        val blsSig = crypto.aggregateBls(clientBlsSig, serverSig)
+        val stamp = stampAdapter.fromJson(stampData.decodeToString())!!
 
         // Sign EC
         val ecSig = profileLog("signEc") {
             crypto.finishSignature(
                 sig = signer ?: crypto.prepareSignature(),
-                payload = newEnvelopeData,
+                payload = envelopeData,
             )
         }
 
         return SignedRequestEnvelope(
             deviceId = crypto.publicKeyEncoded,
-            envelope = newEnvelope,
-            blsSignature = blsSig,
-            ecSignature = ecSig,
+            envelope = envelope,
+            clientSignature = ecSig,
+            auditStamp = stamp,
+            auditSignature = auditSig,
         )
     }
 }

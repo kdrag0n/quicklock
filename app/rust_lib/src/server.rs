@@ -43,6 +43,7 @@ pub fn start_bg() {
 
     info!("Spawn thread");
     thread::spawn(|| {
+        let _ = fs::create_dir("/data/user/0/dev.kdrag0n.quicklock/files");
         env::set_current_dir("/data/user/0/dev.kdrag0n.quicklock/files").unwrap();
         fs::write("config.json", CONFIG_DATA).unwrap();
         server_thread()
