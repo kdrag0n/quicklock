@@ -7,10 +7,8 @@ import dev.kdrag0n.quicklock.toBase64
 import dev.kdrag0n.quicklock.util.EventFlow
 import dev.kdrag0n.quicklock.util.profileLog
 import dev.kdrag0n.quicklock.util.toBase1024
-import kotlinx.coroutines.DelicateCoroutinesApi
-import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.launch
 import okio.ByteString
 import okio.ByteString.Companion.decodeBase64
 import okio.ByteString.Companion.toByteString
@@ -213,7 +211,7 @@ class ApiClient @Inject constructor(
     private suspend inline fun <reified T> sealAndSign(
         request: T,
         signer: Signature? = null,
-    ): SignedRequestEnvelope<T> {
+    ): SignedRequestEnvelope<T> = coroutineScope {
         // Seal unsigned envelope
         val requestData = moshi.adapter(T::class.java).toJson(request)
         val envelopeJson = profileLog("nativeSeal") {
@@ -222,27 +220,36 @@ class ApiClient @Inject constructor(
         val envelopeData = envelopeJson.encodeToByteArray()
         val envelope = envelopeAdapter.fromJson(envelopeJson)!!
 
-        val clientSig1 = profileLog("signMac") {
-            crypto.signMac(envelopeData)
-        }
-        val (stampData, auditSig) = profileLog("auditSign") {
-            auditor.sign(SignRequest(
-                clientId = crypto.auditClientId,
-                envelope = envelopeData,
-                clientMac = clientSig1,
-            )).unwrap()
-        }
-        val stamp = stampAdapter.fromJson(stampData.decodeToString())!!
-
-        // Sign EC
-        val ecSig = profileLog("signEc") {
-            crypto.finishSignature(
-                sig = signer ?: crypto.prepareSignature(),
-                payload = envelopeData,
-            )
+        val auditJob = async(Dispatchers.IO) {
+            val clientSig1 = profileLog("signMac") {
+                crypto.signMac(envelopeData)
+            }
+            val (stampData, auditSig) = profileLog("auditSign") {
+                auditor.sign(SignRequest(
+                    clientId = crypto.auditClientId,
+                    envelope = envelopeData,
+                    clientMac = clientSig1,
+                )).unwrap()
+            }
+            val stamp = stampAdapter.fromJson(stampData.decodeToString())!!
+            Pair(stamp, auditSig)
         }
 
-        return SignedRequestEnvelope(
+        val localJob = async(Dispatchers.IO) {
+            // Sign EC
+            profileLog("signEc") {
+                crypto.finishSignature(
+                    sig = signer ?: crypto.prepareSignature(),
+                    payload = envelopeData,
+                )
+            }
+        }
+
+        awaitAll(auditJob, localJob)
+        val (stamp, auditSig) = auditJob.await()
+        val ecSig = localJob.await()
+
+        SignedRequestEnvelope(
             deviceId = crypto.publicKeyEncoded,
             envelope = envelope,
             clientSignature = ecSig,
