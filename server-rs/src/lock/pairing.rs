@@ -62,6 +62,12 @@ fn finish_pair(
     // Verify delegation attestation and certificate chain
     verify_chain(&req.delegation_attestation_chain, &challenge.id, true)?;
 
+    // Max expiry = delegator's expiry
+    if let Some(ref delegator) = delegated_by {
+        let delegator = STORE.get_device(delegator)?;
+        expires_at = expires_at.min(delegator.expires_at);
+    }
+
     // Only allow entities that delegator has access to
     let allowed_entities = match delegated_by {
         Some(ref delegator) => allowed_entities
