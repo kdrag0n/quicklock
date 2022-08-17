@@ -105,6 +105,7 @@ async fn sign(
         STORE.log_event(&device.client_id, LogEvent {
             id: Ulid::new().into(),
             envelope: envelope.clone(),
+            stamp: stamp.clone(),
         });
     });
 

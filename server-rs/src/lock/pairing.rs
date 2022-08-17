@@ -1,5 +1,6 @@
 use std::net::SocketAddr;
 
+use anyhow::anyhow;
 use axum::response::IntoResponse;
 use axum::{Json, Router};
 use axum::extract::{Path, ConnectInfo};
@@ -63,10 +64,13 @@ fn finish_pair(
     verify_chain(&req.delegation_attestation_chain, &challenge.id, true)?;
 
     // Max expiry = delegator's expiry
-    if let Some(ref delegator) = delegated_by {
-        let delegator = STORE.get_device(delegator)?;
-        expires_at = expires_at.min(delegator.expires_at);
-    }
+    let expires_at = if let Some(ref delegator) = delegated_by {
+        let delegator = STORE.get_device(delegator)
+            .ok_or_else(|| anyhow!("Missing device"))?;
+        expires_at.min(delegator.expires_at)
+    } else {
+        expires_at
+    };
 
     // Only allow entities that delegator has access to
     let allowed_entities = match delegated_by {

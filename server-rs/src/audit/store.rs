@@ -5,7 +5,7 @@ use dashmap::DashMap;
 use once_cell::sync::Lazy;
 use serde::{Serialize, Deserialize};
 use tracing::{debug};
-use crate::serialize::{base64 as serde_b64};
+use crate::{serialize::{base64 as serde_b64}, envelope::AuditStamp};
 
 use super::RequestEnvelope;
 
@@ -24,6 +24,7 @@ pub struct PairedDevice {
 pub struct LogEvent {
     pub id: String,
     pub envelope: RequestEnvelope,
+    pub stamp: AuditStamp,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
