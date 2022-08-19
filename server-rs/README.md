@@ -19,10 +19,24 @@ This only describes the custom protocol without backwards compatibility with Web
 The following cryptographic primitives have been selected for efficiency, and will be referenced by the following terms:
 
 - Hash: BLAKE3
+- HashIdShort: BLAKE3 truncated to 96 bits (for efficient ID generation)
 - AEAD: XChaCha20-Poly1305
 - MAC: HMAC-SHA256 (subject to change)
 - ClientSig: ECDSA with SHA-256 and P-256 (for compatibility with Android StrongBox)
 - AuditSig: Ed25519
+
+## Keys
+
+The protocol uses the following keys:
+
+- AuditMacKey: Used by Alice to authenticate messages for Auditor. Known by Alice and Auditor.
+- AuditSecretKey: Used by Auditor to sign logged messages. Known by Auditor.
+- AuditPublicKey: Used by relying party to verify that Auditor has received a message. Known by Alice, Auditor, and Relying party.
+- EnvelopeEncKey: Used by Alice to encrypt RequestEnvelopes and blind messages against Auditor. Known by Alice and Relying party.
+- ClientSigSecretKey: Used by Alice to sign regular (i.e. unlock) requests to relying party. Known by Alice.
+- ClientSigPublicKey: Used by relying party to verify that Alice is making a regular request and device integrity has not been compromised (bound to Android StrongBox). Known by Alice and Relying party.
+- DelegationClientSigSecretKey: Used by Alice to sign dangerous (i.e. delegation) requests to relying party. Known by Alice.
+- DelegationClientSigPublicKey: Used by relying party to verify that Alice is making a dangerous request and that device integrity has not been compromised (bound to Android StrongBox). Known by Alice and Relying party.
 
 ## Core messages
 
@@ -37,7 +51,7 @@ All requests are encapsulated in an encrypted and authenticated envelope. This i
 Contents:
 
 - Nonce
-- AEAD(*request_payload*, *nonce*)
+- AEAD(*request_payload*, EnvelopeEncKey, *nonce*)
 
 ### AuditStamp
 
@@ -58,8 +72,8 @@ Contents:
 - Client device ID
 - RequestEnvelope (*envelope*)
 - AuditStamp (*stamp*)
-- ClientSig(*envelope*)
-- AuditSig(*stamp*)
+- ClientSig(*envelope*, ClientSigSecretKey)
+- AuditSig(*stamp*, AuditSecretKey)
 
 ### AuditClientState
 
@@ -92,7 +106,7 @@ All authenticated requests must be encapsulated in a [**SignedRequestEnvelope**]
 
 1. Use AEAD to encrypt request message and "seal" it in a [**RequestEnvelope**](#requestenvelope)
 2. Sign *RequestEnvelope* with provided ClientSig *keypair*
-3. Compute MAC(*RequestEnvelope*, *MAC key*) and send **SignRequest** to Auditor
+3. Compute MAC(*RequestEnvelope*, AuditMacKey) and send **SignRequest** to Auditor
 4. Auditor performs the following steps and responds with a **SignResponse**:
    1. Verify the *MAC* in **SignRequest**
    2. Create **AuditStamp** with Hash(*RequestEnvelope*), timestamp, and client IP address
@@ -104,15 +118,20 @@ Contents of **SignRequest**:
 
 - Alice's client ID issued at registration time (or alternatively, derived from her MAC key using Hash)
 - *RequestEnvelope*
-- MAC(*RequestEnvelope*, *MAC key*)
+- MAC(*RequestEnvelope*, AuditMacKey)
 
 To speed up the process, Alice can sign the request with ClientSig and obtain AuditSig in parallel.
 
 ### VerifyAndOpen
 
-The relying party authenticates requests by verifying *SignedRequestEnvelope* signatures from both Alice and Auditor, then decrypting ("opening") the *RequestEnvelope*:
+Relying party authenticates requests by verifying *SignedRequestEnvelope* signatures from both Alice and Auditor, then decrypting ("opening") the *RequestEnvelope*:
 
-1. 
+1. Verify *ClientSig* using ClientSigPublicKey (or DelegationClientSigPublicKey for dangerous requests)
+2. Verify *AuditSig* using AuditPublicKey
+3. Verify that *AuditStamp.envelopeHash* matches Hash(*RequestEnvelope*)
+4. Verify that *AuditStamp* contains a valid timestamp within the grace period
+5. If transport is IP-based, verify that *AuditStamp* contains a matching client IP address
+6. Decrypt *RequestEnvelope* using AEAD and EnvelopeEncKey
 
 ## Registration
 
@@ -120,12 +139,20 @@ The relying party authenticates requests by verifying *SignedRequestEnvelope* si
 
 #### FinishPair
 
+Alice creates a **PairFinishPayload** during the pairing process:
+
+- PairingChallenge *ID*
+- AuditPublicKey
+- ClientSigPublicKey
+- DelegationClientSigPublicKey
+- EnvelopeEncKey
+
 To enroll a new device (Alice), the relying party verifies Alice's *PairFinishPayload*:
 
 1. Verify that the request is tied to a valid, active *PairingChallenge*
 2. Verify that no more than 5 minutes have elapsed since the challenge was generated
 3. If attestation is enabled, verify *main attestation certificate chain* and *delegation attestation certificate chain*. Verify that the root of each certificate chain is a trusted Google root certificate. Verify that the ASN.1 fields in the `1.3.6.1.4.1.11129.2.1.17` extension match the parameters described in [Generate credentials](#2-generate-credentials).
-4. Enroll Alice and store her *public key*, *delegation public key*, *request encryption key*, and *auditor public key*. Alice will be identified by her *public key* for future requests.
+4. Enroll Alice and store *ClientSigPublicKey*, *DelegationClientSigPublicKey*, *EnvelopeEncKey*, and *AuditPublicKey*. Alice will be identified by 96-bit client ID *HashIdShort(ClientSigPublicKey)* for future requests.
 
 Access expiry time, delegator device, and allowed entities (locks) are also stored if this is a delegated registration.
 
@@ -143,15 +170,15 @@ Relying party responds with a **PairingChallenge**:
 
 Alice generates the following credentials, saved in **LockClientState**:
 
-- Primary ClientSig keypair
-- Delegation ClientSig keypair (for delegating new devices only)
+- ClientSigSecretKey
+- DelegationClientSigSecretKey (for delegating new devices only)
 - **AuditClientState**
-  - MAC key for authenticating requests with Auditor
-  - AEAD key for encrypting request envelopes
+  - AuditMacKey
+  - EnvelopeEncKey
 
 This must be done after getting a PairingChallenge in order to generate the key with the correct attestation challenge on Android. On Android devices, both keypairs must be generated with the following parameters:
 
-- Attestation challenge = Pairingchallenge *ID*
+- Attestation challenge = PairingChallenge *ID*
 - Key validity start = now
 - Device properties attestation = true
 - Purpose = Signing with SHA-256 digest
@@ -165,21 +192,21 @@ Delegation keypairs must also be generated with the following parameters:
 
 If auditing is enabled, Alice sends a **RegisterRequest** to Auditor:
 
-- MAC key
+- AuditMacKey
 
 Auditor generates an **AuditSig** keypair for Alice and a persistent ID with Hash(*macKey*). It stores the keypair, associated with the ID, and responds with a **RegisterResponse**:
 
 - Client ID
-- AuditSig public key
+- AuditPublicKey
 
 ### 4. Create PairFinishPayload
 
 Alice creates a **PairFinishPayload**:
 
 - PairingChallenge *ID*
-- Primary ClientSig public key
-- Delegation ClientSig public key
-- AEAD key (for envelope decryption)
+- ClientSigPublicKey
+- DelegationClientSigPublicKey
+- EnvelopeEncKey
 
 This message acts as a registration request, but must be encapsulated in another request for authentication/authorization.
 
