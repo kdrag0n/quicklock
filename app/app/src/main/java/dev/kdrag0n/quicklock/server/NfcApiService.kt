@@ -4,6 +4,7 @@ import android.nfc.tech.IsoDep
 import com.squareup.moshi.JsonClass
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.adapter
+import dev.kdrag0n.quicklock.CUSTOM_PROTOCOL_MAGIC
 import dev.kdrag0n.quicklock.toBase64
 import dev.kdrag0n.quicklock.ui.apduExt
 import dev.kdrag0n.quicklock.util.profileLog
@@ -75,7 +76,8 @@ class NfcApiService(
         Timber.d("req: payload=${reqData.size} apdu=${apdu.size}")
         Timber.d("req: pl contents=${reqData.toBase64()}")
         val respData = profileLog("nfcTransceive") {
-            tag.transceive(apdu)
+            // no apdu header to minimize size
+            tag.transceive(byteArrayOf(CUSTOM_PROTOCOL_MAGIC.toByte(), endpoint.toByte()) + gzipData)
         }
         if (respData[0] != '{'.code.toByte() && respData[0] != '['.code.toByte()) {
             error("Invalid resp data: ${respData.toByteString().hex()}")
