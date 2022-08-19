@@ -10,7 +10,8 @@ object NativeLib {
     @JvmStatic external fun blsSignMessage(skData: ByteArray, message: ByteArray): ByteArray
     @JvmStatic external fun blsAggregateSigs(pk1: ByteArray, sig1: ByteArray, pk2: ByteArray, sig2: ByteArray): ByteArray
 
-    @JvmStatic external fun envelopeSeal(key: ByteArray, msg: String): String
+    @JvmStatic external fun envelopeSeal(key: ByteArray, msg: ByteArray): String
+    @JvmStatic external fun hash(msg: ByteArray): ByteArray
 
     @JvmStatic external fun startServer()
 }

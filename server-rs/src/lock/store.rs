@@ -10,6 +10,9 @@ use crate::time::now;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PairedDevice {
+    // Hash of PK (fingerprint)
+    pub id: String,
+
     // For normal actions (unlock)
     // Custom protocol w/ auditing: this is the ECDSA key
     pub public_key: String,
@@ -46,7 +49,7 @@ impl DataStore {
     }
 
     pub fn add_device(&self, device: PairedDevice) {
-        self.devices.insert(device.public_key.clone(), device);
+        self.devices.insert(device.id.clone(), device);
         self.persist();
     }
 

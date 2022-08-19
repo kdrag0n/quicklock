@@ -13,6 +13,7 @@ pub struct UnlockChallenge {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UnlockStartRequest {
+    #[serde(rename = "e")]
     pub entity_id: String,
 }
 

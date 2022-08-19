@@ -7,6 +7,7 @@ import com.squareup.moshi.adapter
 import dagger.hilt.android.AndroidEntryPoint
 import dev.kdrag0n.quicklock.server.ApiService
 import dev.kdrag0n.quicklock.server.NfcRequest
+import dev.kdrag0n.quicklock.server.SignedRequestEnvelope
 import dev.kdrag0n.quicklock.server.gunzipBytes
 import dev.kdrag0n.quicklock.util.profileLog
 import kotlinx.coroutines.runBlocking
@@ -48,8 +49,7 @@ class ServerHostApduService : HostApduService() {
 
         // Custom protocol: HTTP service proxy
         if (cla == 0x01.toByte() && ins == 0x01.toByte()) {
-            val payloadStr = gunzipBytes(payload).decodeToString()
-            val req: NfcRequest = parseReq(payloadStr)
+            val req = NfcRequest.fromByteArray(gunzipBytes(payload))
             Timber.d("Custom protocol: HTTP proxy $req")
             val resp = runBlocking {
                 profileLog("nfcProxyReq") {
@@ -62,7 +62,7 @@ class ServerHostApduService : HostApduService() {
                         6 -> encodeResp(service.finishDelegatedPair(req.challengeId!!, parseReq(req.payload!!)))
                         7 -> encodeResp(service.getPairingChallenge())
                         8 -> encodeResp(service.startUnlock(parseReq(req.payload!!)))
-                        9 -> encodeResp(service.finishUnlock(req.challengeId!!, parseReq(req.payload!!)))
+                        9 -> encodeResp(service.finishUnlock(req.challengeId!!, SignedRequestEnvelope.fromByteArray(req.payload!!)))
                         else -> null
                     }
                 }
@@ -88,8 +88,8 @@ class ServerHostApduService : HostApduService() {
     }
 
     @OptIn(ExperimentalStdlibApi::class)
-    private inline fun <reified T> parseReq(req: String): T {
-        return moshi.adapter<T>().fromJson(req)!!
+    private inline fun <reified T> parseReq(req: ByteArray): T {
+        return moshi.adapter<T>().fromJson(req.decodeToString())!!
     }
 }
 

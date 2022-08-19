@@ -60,7 +60,7 @@ class NfcApiServiceWrapper @Inject constructor() : ApiService {
 
     override suspend fun finishUnlock(
         challengeId: String,
-        request: SignedRequestEnvelope<UnlockChallenge>
+        request: SignedRequestEnvelope<ByteArray>,
     ) = useTag {
         Timber.d("finishUnlock")
         it.finishUnlock(challengeId, request)

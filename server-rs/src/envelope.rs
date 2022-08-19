@@ -19,19 +19,19 @@ pub struct AuditStamp {
 #[serde(rename_all = "camelCase")]
 pub struct RequestEnvelope {
     // XChaCha20-Poly1305
-    #[serde(with = "serde_b64")]
+    #[serde(rename = "p", with = "serde_b64")]
     pub enc_payload: Vec<u8>,
-    #[serde(with = "serde_b64")]
+    #[serde(rename = "n", with = "serde_b64")]
     pub enc_nonce: Vec<u8>, // 192 bits
 }
 
 impl RequestEnvelope {
-    pub fn seal_raw(payload: &str, enc_key: &[u8]) -> AppResult<RequestEnvelope> {
+    pub fn seal_raw(payload: &[u8], enc_key: &[u8]) -> AppResult<RequestEnvelope> {
         let cipher = XChaCha20Poly1305::new_from_slice(enc_key)
             .map_err(|_| anyhow!("Bad key"))?;
         let nonce_bytes: [u8; 24] = rand::random();
         let nonce = <Nonce<XChaCha20Poly1305>>::from_slice(&nonce_bytes);
-        let enc_payload = cipher.encrypt(nonce, payload.as_bytes())
+        let enc_payload = cipher.encrypt(nonce, payload)
             .map_err(|_| anyhow!("Failed to encrypt"))?;
 
         Ok(RequestEnvelope {
@@ -45,19 +45,25 @@ impl RequestEnvelope {
         T: Serialize
     {
         let payload = serde_json::to_string(request)?;
-        Self::seal_raw(&payload, enc_key)
+        Self::seal_raw(payload.as_bytes(), enc_key)
     }
 
-    pub fn open<T>(&self, enc_key: &[u8]) -> AppResult<T>
-    where
-        T: DeserializeOwned
-    {
+    pub fn open_raw(&self, enc_key: &[u8]) -> AppResult<Vec<u8>> {
         // Decrypt request contents
         let cipher = XChaCha20Poly1305::new_from_slice(enc_key)
             .map_err(|_| anyhow!("Bad key"))?;
         let nonce = <Nonce<XChaCha20Poly1305>>::from_slice(&self.enc_nonce);
         let payload = cipher.decrypt(nonce, &*self.enc_payload)
             .map_err(|_| anyhow!("Failed to decrypt"))?;
+
+        Ok(payload)
+    }
+
+    pub fn open<T>(&self, enc_key: &[u8]) -> AppResult<T>
+    where
+        T: DeserializeOwned
+    {
+        let payload = self.open_raw(enc_key)?;
 
         // Decode payload
         let request = serde_json::from_slice(&payload)?;

@@ -33,7 +33,7 @@ data class DelegationState(
 @OptIn(DelicateCoroutinesApi::class)
 @Singleton
 class ApiClient @Inject constructor(
-    private val service: ApiService,
+    private val service: NfcApiServiceWrapper,
     private val auditor: AuditService,
     private val crypto: CryptoService,
     private val moshi: Moshi,
@@ -198,9 +198,12 @@ class ApiClient @Inject constructor(
             }
 
             require(challenge.entityId == entityId)
+            // just sign challenge id to minimize size
+            val challengeId = challenge.id.decodeBase64()!!.toByteArray()
+            require(challengeId.size == 32)
 
             val envelope = profileLog("sealAndSign") {
-                sealAndSign(challenge)
+                sealAndSign(challengeId)
             }
             profileLog("finish") {
                 service.finishUnlock(challenge.id, envelope)
@@ -213,7 +216,11 @@ class ApiClient @Inject constructor(
         signer: Signature? = null,
     ): SignedRequestEnvelope<T> = coroutineScope {
         // Seal unsigned envelope
-        val requestData = moshi.adapter(T::class.java).toJson(request)
+        val requestData = if (request is ByteArray) {
+            request
+        } else {
+            moshi.adapter(T::class.java).toJson(request).encodeToByteArray()
+        }
         val envelopeJson = profileLog("nativeSeal") {
             NativeLib.envelopeSeal(crypto.encKeyBytes, requestData)
         }
@@ -250,7 +257,7 @@ class ApiClient @Inject constructor(
         val ecSig = localJob.await()
 
         SignedRequestEnvelope(
-            deviceId = crypto.publicKeyEncoded,
+            deviceId = crypto.deviceId,
             envelope = envelope,
             clientSignature = ecSig,
             auditStamp = stamp,

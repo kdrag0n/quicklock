@@ -12,12 +12,10 @@ use super::store::STORE;
 pub trait EnvelopeOpen {
     fn open<T: DeserializeOwned>(&self, addr: &SocketAddr) -> AppResult<T>;
     fn open_for_delegation<T: DeserializeOwned>(&self, addr: &SocketAddr) -> AppResult<T>;
+    fn open_raw(&self, addr: &SocketAddr) -> AppResult<Vec<u8>>;
 }
 
-fn _open<T>(env: &SignedRequestEnvelope, is_delegation: bool, addr: &SocketAddr) -> AppResult<T>
-where
-    T: DeserializeOwned,
-{
+fn _open_raw(env: &SignedRequestEnvelope, is_delegation: bool, addr: &SocketAddr) -> AppResult<Vec<u8>> {
     let device = STORE.get_device(&env.device_id)
         .ok_or_else(|| anyhow!("Device not found"))?;
 
@@ -38,7 +36,18 @@ where
     require_eq(&stamp.client_ip, &addr.ip().to_string())?;
     require(now().abs_diff(stamp.timestamp) <= CONFIG.time_grace_period)?;
 
-    env.envelope.open(&device.enc_key)
+    env.envelope.open_raw(&device.enc_key)
+}
+
+fn _open<T>(env: &SignedRequestEnvelope, is_delegation: bool, addr: &SocketAddr) -> AppResult<T>
+where
+    T: DeserializeOwned
+{
+    let payload = _open_raw(env, is_delegation, addr)?;
+
+    // Decode payload
+    let request = serde_json::from_slice(&payload)?;
+    Ok(request)
 }
 
 impl EnvelopeOpen for SignedRequestEnvelope {
@@ -48,5 +57,9 @@ impl EnvelopeOpen for SignedRequestEnvelope {
 
     fn open_for_delegation<T: DeserializeOwned>(&self, addr: &SocketAddr) -> AppResult<T> {
         _open(self, true, addr)
+    }
+
+    fn open_raw(&self, addr: &SocketAddr) -> AppResult<Vec<u8>> {
+        _open_raw(self, false, addr)
     }
 }

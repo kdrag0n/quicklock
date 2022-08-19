@@ -68,7 +68,7 @@ async fn register(req: Json<RegisterRequest>) -> AppResult<impl IntoResponse> {
     let pkcs8 = Ed25519KeyPair::generate_pkcs8(&SystemRandom::new())?;
     let keypair = Ed25519KeyPair::from_pkcs8(pkcs8.as_ref())?;
     STORE.add_device(PairedDevice {
-        client_id: client_id.clone(),
+        id: client_id.clone(),
         client_mac_key: req.client_mac_key.clone(),
         server_keypair: pkcs8.as_ref().into(),
     });
@@ -102,7 +102,7 @@ async fn sign(
 
     // Log request
     profile!("audit store", {
-        STORE.log_event(&device.client_id, LogEvent {
+        STORE.log_event(&device.id, LogEvent {
             id: Ulid::new().into(),
             envelope: envelope.clone(),
             stamp: stamp.clone(),

@@ -36,20 +36,23 @@ class CryptoService @Inject constructor(
         get() = getKeyEntry(alias = DELEGATION_ALIAS).certificate.publicKey.encoded.toBase64()
 
     val blsPublicKeyBytes by lazy {
-        val sk = settings.macKey!!.decodeBase64()!!.toByteArray()
+        val sk = settings.auditMacKey!!.decodeBase64()!!.toByteArray()
         profileLog("blsDerivePk") {
             NativeLib.blsDerivePublicKey(sk)
         }
     }
 
+    val deviceId
+        get() = settings.lockDeviceId!!.decodeBase64()!!.toByteArray()
+
     val blsPublicKeyEncoded
         get() = blsPublicKeyBytes.toBase64()
 
     val encKeyBytes
-        get() = settings.encKey!!.decodeBase64()!!.toByteArray()
+        get() = settings.envelopeEncKey!!.decodeBase64()!!.toByteArray()
 
     val macKeyBytes
-        get() = settings.macKey!!.decodeBase64()!!.toByteArray()
+        get() = settings.auditMacKey!!.decodeBase64()!!.toByteArray()
 
     val auditServerPublicKeyBytes
         get() = settings.auditServerPublicKey!!.decodeBase64()!!.toByteArray()
@@ -61,16 +64,16 @@ class CryptoService @Inject constructor(
         // Encryption
         val encKey = ByteArray(32)
         SecureRandom.getInstanceStrong().nextBytes(encKey)
-        settings.encKey = encKey.toBase64()
+        settings.envelopeEncKey = encKey.toBase64()
 
         // MAC key
         val macKey = ByteArray(32)
         SecureRandom.getInstanceStrong().nextBytes(macKey)
-        settings.macKey = macKey.toBase64()
+        settings.auditMacKey = macKey.toBase64()
     }
 
     fun signBls(data: ByteArray): ByteArray {
-        val sk = settings.macKey!!.decodeBase64()!!.toByteArray()
+        val sk = settings.auditMacKey!!.decodeBase64()!!.toByteArray()
         val sig = NativeLib.blsSignMessage(sk, data)
         return sig
     }
@@ -123,7 +126,11 @@ class CryptoService @Inject constructor(
         }
 
         gen.initialize(spec)
-        return gen.generateKeyPair().public
+        val pk = gen.generateKeyPair().public
+        if (!isDelegation) {
+            settings.lockDeviceId = NativeLib.hash(pk.encoded).toBase64()
+        }
+        return pk
     }
 
     fun prepareSignature(alias: String = ALIAS): Signature {

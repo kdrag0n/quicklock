@@ -9,6 +9,7 @@ use dashmap::DashMap;
 use lazy_static::lazy_static;
 use parking_lot::Mutex;
 use tracing::log::{debug, info};
+use crate::crypto::hash;
 use crate::envelope::SignedRequestEnvelope;
 use crate::lock::model::{PairFinishPayload, PairingChallenge, InitialPairQr, InitialPairFinishRequest, Delegation};
 use qrcode::QrCode;
@@ -83,12 +84,14 @@ fn finish_pair(
             })
             // Otherwise limit to delegator's allowed list
             .or_else(|| STORE.get_device(delegator)
-                .and_then(|d| d.allowed_entities))
-        ,
+                .and_then(|d| d.allowed_entities)),
         None => allowed_entities,
     };
 
+    // Enroll
+    let pk_bytes = base64::decode(&req.public_key)?;
     STORE.add_device(PairedDevice {
+        id: base64::encode(&hash(&pk_bytes)),
         public_key: req.public_key.clone(),
         delegation_key: req.delegation_key.clone(),
         enc_key: req.enc_key.clone(),

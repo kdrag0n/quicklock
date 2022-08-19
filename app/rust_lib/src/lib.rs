@@ -9,6 +9,7 @@ use jni::objects::{JClass, JString};
 use jni_sys::{jbyteArray, jint, JNI_VERSION_1_6, jstring};
 use log::Level;
 use qlock::bls::aggregate_sigs_multi;
+use qlock::crypto::hash;
 use qlock::envelope::RequestEnvelope;
 
 
@@ -75,13 +76,25 @@ pub extern "system" fn Java_dev_kdrag0n_quicklock_NativeLib_envelopeSeal(
     env: JNIEnv,
     _: JClass,
     key_in: jbyteArray,
-    msg_in: JString,
+    msg_in: jbyteArray,
 ) -> jstring {
     let key_data = env.convert_byte_array(key_in).unwrap();
-    let msg: String = env.get_string(msg_in).unwrap().into();
+    let msg = env.convert_byte_array(msg_in).unwrap();
     let envelope = RequestEnvelope::seal_raw(&msg, &key_data).unwrap();
 
     env.new_string(envelope.serialize()).unwrap().into_inner()
+}
+
+#[no_mangle]
+pub extern "system" fn Java_dev_kdrag0n_quicklock_NativeLib_hash(
+    env: JNIEnv,
+    _: JClass,
+    msg_in: jbyteArray,
+) -> jbyteArray {
+    let msg = env.convert_byte_array(msg_in).unwrap();
+    let hash = hash(&msg);
+
+    env.byte_array_from_slice(&hash).unwrap()
 }
 
 #[no_mangle]

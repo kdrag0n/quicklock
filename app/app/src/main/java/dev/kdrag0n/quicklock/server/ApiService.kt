@@ -1,11 +1,17 @@
 package dev.kdrag0n.quicklock.server
 
+import com.squareup.moshi.Json
 import com.squareup.moshi.JsonClass
+import okio.Buffer
+import okio.BufferedSource
+import okio.ByteString.Companion.decodeBase64
 import retrofit2.Response
 import retrofit2.http.Body
 import retrofit2.http.GET
 import retrofit2.http.POST
 import retrofit2.http.Path
+import timber.log.Timber
+import java.nio.ByteBuffer
 
 interface ApiService {
     @GET("/api/entity")
@@ -41,7 +47,7 @@ interface ApiService {
     @POST("/api/unlock/{challengeId}/finish")
     suspend fun finishUnlock(
         @Path("challengeId") challengeId: String,
-        @Body request: SignedRequestEnvelope<UnlockChallenge>,
+        @Body request: SignedRequestEnvelope<ByteArray>,
     ): Response<Unit>
 }
 
@@ -50,7 +56,9 @@ interface ApiService {
  */
 @JsonClass(generateAdapter = true)
 data class RequestEnvelope(
+    @Json(name = "p")
     val encPayload: ByteArray,
+    @Json(name = "n")
     val encNonce: ByteArray,
 )
 
@@ -63,12 +71,69 @@ data class AuditStamp(
 
 @JsonClass(generateAdapter = true)
 data class SignedRequestEnvelope<T>(
-    val deviceId: String,
+    val deviceId: ByteArray,
     val envelope: RequestEnvelope,
     val clientSignature: ByteArray,
     val auditStamp: AuditStamp,
     val auditSignature: ByteArray,
-)
+) {
+    fun toByteArray(): ByteArray = ByteBuffer.allocate(
+        deviceId.size + // 32
+                envelope.encPayload.size + // 48
+                envelope.encNonce.size + // 24
+                1 + // clientSignature.size
+                clientSignature.size + // ~71
+                auditStamp.envelopeHash.size + // 32
+                auditStamp.clientIp.length + // 9 (TODO length)
+                8 + // timestamp
+                auditSignature.size // 64
+    ).run {
+        Timber.d("sizes: deviceId=${deviceId.size} encPayload=${envelope.encPayload.size} encNonce=${envelope.encNonce.size} 1 clientSig=${clientSignature.size} envelopeHash=${auditStamp.envelopeHash.size} clientIp=${auditStamp.clientIp.length} 8 auditSig=${auditSignature.size} total=${deviceId.size + // 32
+                envelope.encPayload.size + // 48
+                envelope.encNonce.size + // 24
+                1 + // clientSignature.size
+                clientSignature.size + // ~71
+                auditStamp.envelopeHash.size + // 32
+                auditStamp.clientIp.length + // 9 (TODO length)
+                8 + // timestamp
+                auditSignature.size}")
+        put(deviceId)
+        put(envelope.encPayload)
+        put(envelope.encNonce)
+        put(clientSignature.size.toByte())
+        put(clientSignature)
+        put(auditStamp.envelopeHash)
+        put(auditStamp.clientIp.toByteArray())
+        putLong(auditStamp.timestamp)
+        put(auditSignature)
+        array()
+    }
+
+    companion object {
+        inline fun <reified T> fromByteArray(data: ByteArray): SignedRequestEnvelope<T> {
+            val buffer = Buffer().write(data).peek()
+            Timber.d("total d = ${data.size}")
+
+            return SignedRequestEnvelope(
+                deviceId = buffer.readByteArray(32),
+                envelope = RequestEnvelope(
+                    encPayload = buffer.readByteArray(48),
+                    encNonce = buffer.readByteArray(24),
+                ),
+                clientSignature = run {
+                    val size = buffer.readByte()
+                    buffer.readByteArray(size.toLong())
+                },
+                auditStamp = AuditStamp(
+                    envelopeHash = buffer.readByteArray(32),
+                    clientIp = buffer.readUtf8(9),
+                    timestamp = buffer.readLong(),
+                ),
+                auditSignature = buffer.readByteArray(64),
+            )
+        }
+    }
+}
 
 /*
  * Pairing
@@ -133,5 +198,6 @@ data class UnlockChallenge(
 
 @JsonClass(generateAdapter = true)
 data class UnlockStartRequest(
+    @Json(name = "e")
     val entityId: String,
 )

@@ -47,12 +47,13 @@ async fn finish_unlock(
     client: Extension<reqwest::Client>,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
 ) -> AppResult<impl IntoResponse> {
-    let req: UnlockChallenge = envelope.open(&addr)?;
-    debug!("Finish unlock: {:?}", req);
+    // Envelope only contains challenge nonce to minimize wire size, not entire UnlockChallenge
+    let req_challenge = envelope.open_raw(&addr)?;
+    debug!("Finish unlock: {:?}", req_challenge);
 
     let (_, challenge) = UNLOCK_CHALLENGES.remove(&id)
         .ok_or_else(|| anyhow!("Challenge not found"))?;
-    require(req == challenge)?;
+    require(req_challenge == base64::decode(&challenge.id)?)?;
 
     STORE.get_device_for_entity(&envelope.device_id, &challenge.entity_id)
         .ok_or_else(|| anyhow!("Entity not allowed"))?;
