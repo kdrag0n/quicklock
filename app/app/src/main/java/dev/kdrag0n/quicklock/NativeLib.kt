@@ -14,4 +14,6 @@ object NativeLib {
     @JvmStatic external fun hash(msg: ByteArray): ByteArray
 
     @JvmStatic external fun startServer()
+    @JvmStatic external fun serverStartUnlock(entityId: String): String
+    @JvmStatic external fun serverFinishUnlock(envelopeJson: String, id: String): String
 }

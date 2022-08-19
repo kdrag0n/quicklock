@@ -5,10 +5,7 @@ import android.os.Bundle
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.adapter
 import dagger.hilt.android.AndroidEntryPoint
-import dev.kdrag0n.quicklock.server.ApiService
-import dev.kdrag0n.quicklock.server.NfcRequest
-import dev.kdrag0n.quicklock.server.SignedRequestEnvelope
-import dev.kdrag0n.quicklock.server.gunzipBytes
+import dev.kdrag0n.quicklock.server.*
 import dev.kdrag0n.quicklock.util.profileLog
 import kotlinx.coroutines.runBlocking
 import okio.ByteString.Companion.toByteString
@@ -61,8 +58,10 @@ class ServerHostApduService : HostApduService() {
                         5 -> encodeResp(service.uploadDelegatedPairFinishPayload(req.challengeId!!, parseReq(req.payload!!)))
                         6 -> encodeResp(service.finishDelegatedPair(req.challengeId!!, parseReq(req.payload!!)))
                         7 -> encodeResp(service.getPairingChallenge())
-                        8 -> encodeResp(service.startUnlock(parseReq(req.payload!!)))
-                        9 -> encodeResp(service.finishUnlock(req.challengeId!!, SignedRequestEnvelope.fromByteArray(req.payload!!)))
+//                        8 -> encodeResp(service.startUnlock(parseReq(req.payload!!)))
+//                        9 -> encodeResp(service.finishUnlock(req.challengeId!!, SignedRequestEnvelope.fromByteArray(req.payload!!)))
+                        8 -> NativeLib.serverStartUnlock(parseReq<UnlockStartRequest>(req.payload!!).entityId).encodeToByteArray()
+                        9 -> NativeLib.serverFinishUnlock(encodeBody(SignedRequestEnvelope.fromByteArray<ByteArray>(req.payload!!)), req.challengeId!!).encodeToByteArray()
                         else -> null
                     }
                 }
@@ -81,10 +80,15 @@ class ServerHostApduService : HostApduService() {
     }
 
     @OptIn(ExperimentalStdlibApi::class)
-    private inline fun <reified T> encodeResp(resp: Response<T>): ByteArray? {
+    private inline fun <reified T> encodeBody(body: T): String {
+        if (body == Unit) return "{}"
+        return moshi.adapter<T>().toJson(body)
+    }
+
+    @OptIn(ExperimentalStdlibApi::class)
+    private inline fun <reified T> encodeResp(resp: Response<T>): ByteArray {
         val body = resp.body() ?: return "{}".encodeToByteArray()
-        if (body == Unit) return "{}".encodeToByteArray()
-        return moshi.adapter<T>().toJson(body).encodeToByteArray()
+        return encodeBody(body).encodeToByteArray()
     }
 
     @OptIn(ExperimentalStdlibApi::class)

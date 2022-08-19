@@ -9,7 +9,7 @@ mod certificates;
 mod store;
 mod pairing;
 mod crypto;
-mod actions;
+pub mod actions;
 mod homeassistant;
 mod request;
 

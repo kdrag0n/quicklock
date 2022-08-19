@@ -25,7 +25,7 @@ lazy_static! {
     static ref UNLOCK_CHALLENGES: DashMap<String, UnlockChallenge> = DashMap::new();
 }
 
-async fn start_unlock(req: Json<UnlockStartRequest>) -> AppResult<impl IntoResponse> {
+pub fn start_unlock(req: UnlockStartRequest) -> AppResult<UnlockChallenge> {
     debug!("Start unlock: {:?}", req);
 
     CONFIG.entities.get(&req.entity_id)
@@ -38,15 +38,18 @@ async fn start_unlock(req: Json<UnlockStartRequest>) -> AppResult<impl IntoRespo
     };
     UNLOCK_CHALLENGES.insert(challenge.id.clone(), challenge.clone());
 
-    Ok(Json(challenge))
+    Ok(challenge)
 }
 
-async fn finish_unlock(
-    envelope: Json<SignedRequestEnvelope>,
-    Path(id): Path<String>,
-    client: Extension<reqwest::Client>,
-    ConnectInfo(addr): ConnectInfo<SocketAddr>,
-) -> AppResult<impl IntoResponse> {
+async fn start_unlock_route(Json(req): Json<UnlockStartRequest>) -> AppResult<impl IntoResponse> {
+    Ok(Json(start_unlock(req)?))
+}
+
+pub fn finish_unlock(
+    envelope: SignedRequestEnvelope,
+    id: String,
+    addr: SocketAddr,
+) -> AppResult<UnlockChallenge> {
     // Envelope only contains challenge nonce to minimize wire size, not entire UnlockChallenge
     let req_challenge = envelope.open_raw(&addr)?;
     debug!("Finish unlock: {:?}", req_challenge);
@@ -60,6 +63,17 @@ async fn finish_unlock(
 
     // Verify timestamp
     require((now() - challenge.timestamp) <= CONFIG.time_grace_period)?;
+
+    Ok(challenge)
+}
+
+pub async fn finish_unlock_route(
+    Json(envelope): Json<SignedRequestEnvelope>,
+    Path(id): Path<String>,
+    client: Extension<reqwest::Client>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+) -> AppResult<impl IntoResponse> {
+    let challenge = finish_unlock(envelope, id, addr)?;
 
     // Unlock
     info!("Posting HA unlock");
@@ -81,7 +95,7 @@ pub fn service() -> Router {
     let client = reqwest::Client::new();
 
     Router::new()
-        .route("/start", post(start_unlock))
-        .route("/:challenge_id/finish", post(finish_unlock))
+        .route("/start", post(start_unlock_route))
+        .route("/:challenge_id/finish", post(finish_unlock_route))
         .layer(Extension(client))
 }

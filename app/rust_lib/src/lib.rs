@@ -1,16 +1,25 @@
 mod server;
 
 use std::ffi::c_void;
+use std::io::Read;
+use std::net::SocketAddr;
+use std::ptr::null;
+use std::str::FromStr;
 use jni::{JNIEnv, JavaVM};
 
 use android_logger::Config;
+use axum::body::HttpBody;
+use axum::Json;
+use axum::response::IntoResponse;
 use bls_signatures::{Serialize};
-use jni::objects::{JClass, JString};
+use jni::objects::{JClass, JObject, JString};
 use jni_sys::{jbyteArray, jint, JNI_VERSION_1_6, jstring};
 use log::Level;
 use qlock::bls::aggregate_sigs_multi;
 use qlock::crypto::hash;
 use qlock::envelope::RequestEnvelope;
+use qlock::lock::actions::{finish_unlock, start_unlock};
+use qlock::lock::model::UnlockStartRequest;
 
 
 #[no_mangle]
@@ -103,6 +112,36 @@ pub extern "system" fn Java_dev_kdrag0n_quicklock_NativeLib_startServer(
     _: JClass,
 ) {
     server::start_bg();
+}
+
+#[no_mangle]
+pub extern "system" fn Java_dev_kdrag0n_quicklock_NativeLib_serverStartUnlock(
+    env: JNIEnv,
+    _: JClass,
+    entity_id: JString,
+) -> jstring {
+    start_unlock(UnlockStartRequest {
+        entity_id: env.get_string(entity_id).unwrap().into(),
+    }).map_or(JObject::null().into_inner(), |resp| {
+        env.new_string(&serde_json::to_string(&resp).unwrap()).unwrap().into_inner()
+    })
+}
+
+#[no_mangle]
+pub extern "system" fn Java_dev_kdrag0n_quicklock_NativeLib_serverFinishUnlock(
+    env: JNIEnv,
+    _: JClass,
+    envelope_json: JString,
+    id: JString,
+) -> jstring {
+    let json: String = env.get_string(envelope_json).unwrap().into();
+    let envelope = serde_json::from_str(&json).unwrap();
+    let id = env.get_string(id).unwrap().into();
+
+    finish_unlock(envelope, id, SocketAddr::from_str("127.0.0.1:8080").unwrap())
+        .map_or(JObject::null().into_inner(), |resp| {
+            env.new_string(&serde_json::to_string(&resp).unwrap()).unwrap().into_inner()
+        })
 }
 
 #[no_mangle]
