@@ -14,8 +14,6 @@ import timber.log.Timber
 import java.nio.ByteBuffer
 import javax.inject.Inject
 
-const val CUSTOM_PROTOCOL_MAGIC = 0xfa
-
 @AndroidEntryPoint
 class ServerHostApduService : HostApduService() {
     @Inject lateinit var service: ApiService
@@ -26,36 +24,28 @@ class ServerHostApduService : HostApduService() {
 
         val buf = ByteBuffer.wrap(commandApdu)
         val cla = buf.get()
+        val ins = buf.get()
+        val p1 = buf.get()
+        val p2 = buf.get()
 
-        // APDU select?
-        if (cla == 0x00.toByte()) {
-            val ins = buf.get()
-            val p1 = buf.get()
-            val p2 = buf.get()
+        var len = buf.get().toShort()
+        if (len == 0.toShort()) {
+            len = buf.short
+        }
 
-            var len = buf.get().toShort()
-            if (len == 0.toShort()) {
-                len = buf.short
-            }
+        Timber.d("processCommandApdu: cla: $cla, ins: $ins, p1: $p1, p2: $p2, len: $len")
 
-            Timber.d("processCommandApdu: cla: $cla, ins: $ins, p1: $p1, p2: $p2, len: $len")
+        val payload = ByteArray(len.toInt())
+        buf.get(payload)
 
-            val payload = ByteArray(len.toInt())
-            buf.get(payload)
-
-            // SELECT: return OK
-            if (ins == 0xA4.toByte() && p1 == 0x04.toByte() && p2 == 0x00.toByte()) {
-                Timber.d("SELECT: ok")
-                return byteArrayOf(0x90.toByte(), 0x00.toByte())
-            }
+        // SELECT: return OK
+        if (cla == 0x00.toByte() && ins == 0xA4.toByte() && p1 == 0x04.toByte() && p2 == 0x00.toByte()) {
+            Timber.d("SELECT: ok")
+            return byteArrayOf(0x90.toByte(), 0x00.toByte())
         }
 
         // Custom protocol: HTTP service proxy
-//        if (cla == 0x01.toByte() && ins == 0x01.toByte()) {
-        if (cla == CUSTOM_PROTOCOL_MAGIC.toByte()) {
-            val p1 = buf.get()
-            val payload = commandApdu.sliceArray(2..commandApdu.lastIndex)
-
+        if (cla == 0x01.toByte() && ins == 0x01.toByte()) {
             val req = NfcRequest.fromByteArray(gunzipBytes(payload))
             Timber.d("Custom protocol: HTTP proxy $req")
             val resp = runBlocking {
