@@ -12,6 +12,7 @@ object NativeLib {
 
     @JvmStatic external fun envelopeSeal(key: ByteArray, msg: ByteArray): String
     @JvmStatic external fun hash(msg: ByteArray): ByteArray
+    @JvmStatic external fun hashIdShort(msg: ByteArray): ByteArray
 
     @JvmStatic external fun startServer()
     @JvmStatic external fun serverStartUnlock(entityId: String): String

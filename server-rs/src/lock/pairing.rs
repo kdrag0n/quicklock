@@ -9,7 +9,7 @@ use dashmap::DashMap;
 use lazy_static::lazy_static;
 use parking_lot::Mutex;
 use tracing::log::{debug, info};
-use crate::crypto::hash;
+use crate::crypto::{hash, hash_id_short};
 use crate::envelope::SignedRequestEnvelope;
 use crate::lock::model::{PairFinishPayload, PairingChallenge, InitialPairQr, InitialPairFinishRequest, Delegation};
 use qrcode::QrCode;
@@ -91,7 +91,7 @@ fn finish_pair(
     // Enroll
     let pk_bytes = base64::decode(&req.public_key)?;
     STORE.add_device(PairedDevice {
-        id: base64::encode(&hash(&pk_bytes)),
+        id: base64::encode(&hash_id_short(&pk_bytes)),
         public_key: req.public_key.clone(),
         delegation_key: req.delegation_key.clone(),
         enc_key: req.enc_key.clone(),

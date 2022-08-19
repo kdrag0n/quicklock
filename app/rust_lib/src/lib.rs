@@ -16,7 +16,7 @@ use jni::objects::{JClass, JObject, JString};
 use jni_sys::{jbyteArray, jint, JNI_VERSION_1_6, jstring};
 use log::Level;
 use qlock::bls::aggregate_sigs_multi;
-use qlock::crypto::hash;
+use qlock::crypto::{hash, hash_id_short};
 use qlock::envelope::RequestEnvelope;
 use qlock::lock::actions::{finish_unlock, start_unlock};
 use qlock::lock::model::UnlockStartRequest;
@@ -102,6 +102,18 @@ pub extern "system" fn Java_dev_kdrag0n_quicklock_NativeLib_hash(
 ) -> jbyteArray {
     let msg = env.convert_byte_array(msg_in).unwrap();
     let hash = hash(&msg);
+
+    env.byte_array_from_slice(&hash).unwrap()
+}
+
+#[no_mangle]
+pub extern "system" fn Java_dev_kdrag0n_quicklock_NativeLib_hashIdShort(
+    env: JNIEnv,
+    _: JClass,
+    msg_in: jbyteArray,
+) -> jbyteArray {
+    let msg = env.convert_byte_array(msg_in).unwrap();
+    let hash = hash_id_short(&msg);
 
     env.byte_array_from_slice(&hash).unwrap()
 }

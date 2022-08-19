@@ -61,7 +61,7 @@ class ServerHostApduService : HostApduService() {
 //                        8 -> encodeResp(service.startUnlock(parseReq(req.payload!!)))
 //                        9 -> encodeResp(service.finishUnlock(req.challengeId!!, SignedRequestEnvelope.fromByteArray(req.payload!!)))
                         8 -> NativeLib.serverStartUnlock(parseReq<UnlockStartRequest>(req.payload!!).entityId).encodeToByteArray()
-                        9 -> NativeLib.serverFinishUnlock(encodeBody(SignedRequestEnvelope.fromByteArray<ByteArray>(req.payload!!)), req.challengeId!!).encodeToByteArray()
+                        9 -> NativeLib.serverFinishUnlock(encodeBody(SignedRequestEnvelope.fromByteArray<ByteArray>(req.payload!!, moshi)), req.challengeId!!).encodeToByteArray()
                         else -> null
                     }
                 }

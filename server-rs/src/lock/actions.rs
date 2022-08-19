@@ -1,6 +1,6 @@
 use lazy_static::lazy_static;
 use tracing::log::debug;
-use crate::envelope::SignedRequestEnvelope;
+use crate::envelope::{SignedRequestEnvelope, RequestEnvelope};
 use crate::error::AppResult;
 use crate::lock::model::{UnlockChallenge, UnlockStartRequest};
 use std::net::SocketAddr;

@@ -2,6 +2,8 @@ package dev.kdrag0n.quicklock.server
 
 import com.squareup.moshi.Json
 import com.squareup.moshi.JsonClass
+import com.squareup.moshi.Moshi
+import dev.kdrag0n.quicklock.NativeLib
 import okio.Buffer
 import okio.BufferedSource
 import okio.ByteString.Companion.decodeBase64
@@ -77,59 +79,53 @@ data class SignedRequestEnvelope<T>(
     val auditStamp: AuditStamp,
     val auditSignature: ByteArray,
 ) {
-    fun toByteArray(): ByteArray = ByteBuffer.allocate(
-        deviceId.size + // 32
-                envelope.encPayload.size + // 48
-                envelope.encNonce.size + // 24
-                1 + // clientSignature.size
-                clientSignature.size + // ~71
-                auditStamp.envelopeHash.size + // 32
-                auditStamp.clientIp.length + // 9 (TODO length)
-                8 + // timestamp
-                auditSignature.size // 64
-    ).run {
-        Timber.d("sizes: deviceId=${deviceId.size} encPayload=${envelope.encPayload.size} encNonce=${envelope.encNonce.size} 1 clientSig=${clientSignature.size} envelopeHash=${auditStamp.envelopeHash.size} clientIp=${auditStamp.clientIp.length} 8 auditSig=${auditSignature.size} total=${deviceId.size + // 32
-                envelope.encPayload.size + // 48
-                envelope.encNonce.size + // 24
-                1 + // clientSignature.size
-                clientSignature.size + // ~71
-                auditStamp.envelopeHash.size + // 32
-                auditStamp.clientIp.length + // 9 (TODO length)
-                8 + // timestamp
-                auditSignature.size}")
-        put(deviceId)
-        put(envelope.encPayload)
-        put(envelope.encNonce)
-        put(clientSignature.size.toByte())
-        put(clientSignature)
-        put(auditStamp.envelopeHash)
-        put(auditStamp.clientIp.toByteArray())
-        putLong(auditStamp.timestamp)
-        put(auditSignature)
-        array()
+    fun toByteArray(knownData: Boolean = false) = Buffer().run {
+        write(deviceId) // 12
+        if (!knownData) write(envelope.encPayload) // 48
+        write(envelope.encNonce) // 24
+        writeByte(clientSignature.size) // 1
+        write(clientSignature) // clientSignature.size
+        write(auditStamp.clientIp.toByteArray()) // 9 (TODO length)
+        writeLong(auditStamp.timestamp) // 8
+        write(auditSignature) // 64
+
+        val data = snapshot().toByteArray()
+        Timber.d("signed envelope size ${data.size}")
+        data
     }
 
     companion object {
-        inline fun <reified T> fromByteArray(data: ByteArray): SignedRequestEnvelope<T> {
+        inline fun <reified T> fromByteArray(data: ByteArray, moshi: Moshi, knownData: Boolean = false): SignedRequestEnvelope<T> {
             val buffer = Buffer().write(data).peek()
             Timber.d("total d = ${data.size}")
 
+            val deviceId = buffer.readByteArray(12)
+            val encPayload = if (!knownData) buffer.readByteArray(48) else ByteArray(0)
+            val encNonce = buffer.readByteArray(24)
+            val clientSigSize = buffer.readByte()
+            val clientSig = buffer.readByteArray(clientSigSize.toLong())
+            val clientIp = buffer.readUtf8(9)
+            val timestamp = buffer.readLong()
+            val auditSig = buffer.readByteArray(64)
+
+            // Recompute envelope hash
+            val envelope = RequestEnvelope(
+                encPayload = encPayload,
+                encNonce = encNonce,
+            )
+            val envelopeJson = moshi.adapter(RequestEnvelope::class.java).toJson(envelope).encodeToByteArray()
+            val envelopeHash = NativeLib.hash(envelopeJson)
+
             return SignedRequestEnvelope(
-                deviceId = buffer.readByteArray(32),
-                envelope = RequestEnvelope(
-                    encPayload = buffer.readByteArray(48),
-                    encNonce = buffer.readByteArray(24),
-                ),
-                clientSignature = run {
-                    val size = buffer.readByte()
-                    buffer.readByteArray(size.toLong())
-                },
+                deviceId = deviceId,
+                envelope = envelope,
+                clientSignature = clientSig,
                 auditStamp = AuditStamp(
-                    envelopeHash = buffer.readByteArray(32),
-                    clientIp = buffer.readUtf8(9),
-                    timestamp = buffer.readLong(),
+                    envelopeHash = envelopeHash,
+                    clientIp = clientIp,
+                    timestamp = timestamp,
                 ),
-                auditSignature = buffer.readByteArray(64),
+                auditSignature = auditSig,
             )
         }
     }

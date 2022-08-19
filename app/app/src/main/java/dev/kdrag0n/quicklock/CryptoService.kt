@@ -128,7 +128,7 @@ class CryptoService @Inject constructor(
         gen.initialize(spec)
         val pk = gen.generateKeyPair().public
         if (!isDelegation) {
-            settings.lockDeviceId = NativeLib.hash(pk.encoded).toBase64()
+            settings.lockDeviceId = NativeLib.hashIdShort(pk.encoded).toBase64()
         }
         return pk
     }
